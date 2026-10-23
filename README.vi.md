@@ -1,3 +1,5 @@
+> Nhánh này dùng Premium v2.6.0. Xem [hướng dẫn nâng cấp bằng tiếng Anh](docs/premium-redesign.md) cho Thư viện ứng dụng, điều hướng và Cài đặt mới; phần dưới giữ phần giới thiệu của upstream.
+
 <p align="center">
   <a href="https://cleanyour.tv"><img src="docs/banner.png" alt="CleanYourTV: trả lại cho TV một màn hình chính gọn gàng" width="800"></a>
 </p>

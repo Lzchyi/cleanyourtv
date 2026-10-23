@@ -33,6 +33,9 @@ import java.util.Set;
  */
 public class HomeKeyService extends AccessibilityService {
 
+    /** Opt-in Apps-only mode. It reuses the existing key service without the Home/Settings mappings. */
+    private boolean appsLibrary;
+
     /** Remote buttons that should open Settings (config.xml, settings_key_scancodes and settings_key_keycodes). */
     private int[] settingsScancodes = new int[0];
     private int[] settingsKeycodes = new int[0];
@@ -51,6 +54,8 @@ public class HomeKeyService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        appsLibrary = getResources().getBoolean(R.bool.apps_key_library);
+        if (appsLibrary) return; // No configuration polling or accessibility-event subscription.
         settingsScancodes = getResources().getIntArray(R.array.settings_key_scancodes);
         // The service is directBootAware: Android 11 skips a service that is not while the user is still
         // locked at boot, writes accessibility_enabled=0 and, on TCL G03 firmware, never binds it after the
@@ -115,6 +120,24 @@ public class HomeKeyService extends AccessibilityService {
 
     @Override
     protected boolean onKeyEvent(KeyEvent event) {
+        if (appsLibrary) {
+            android.view.InputDevice remote = event.getDevice();
+            boolean sonyApps = remote != null && AppsButton.sonyAppsScan(event.getScanCode(),
+                    remote.getVendorId(), remote.getProductId());
+            if (event.getKeyCode() != KeyEvent.KEYCODE_ALL_APPS && !sonyApps) return false;
+            if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
+                android.util.Log.i("TvHome.Keys", "Apps key: code=" + event.getKeyCode()
+                        + " scan=" + event.getScanCode() + " sony=" + sonyApps);
+                try {
+                    startActivity(new Intent(this, MainActivity.class)
+                            .setAction("com.gathin.tvhome.action.APP_LIBRARY")
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                } catch (ActivityNotFoundException | SecurityException unavailable) {
+                    Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show();
+                }
+            }
+            return true;
+        }
         // A scancode entry is more specific than any keycode, so it goes first.
         if (RemoteKeys.handle(this, event, appScancodes.get(event.getScanCode()),
                 holdAppScancodes.get(event.getScanCode()))) return true;

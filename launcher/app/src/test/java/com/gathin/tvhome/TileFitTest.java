@@ -60,8 +60,14 @@ public class TileFitTest {
         int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(w), false, D);
         int needed = itemH * 4 + Math.round((AppAdapter.TOP_ROOM_DP + AppAdapter.COMPACT_BOTTOM_ROOM_DP) * D);
         assertTrue(needed + " > " + GRID_H, needed <= GRID_H + 2);
-        // With the compact spacing the width limit decides, not the height: no extra whitespace between tiles.
-        assertEquals(AppAdapter.tileWidthPx(INNER, 6, D), w);
+        // The restrained 1.05x focus zoom permits wider tiles than before, so four rows can now hit
+        // the height limit first. Keep the largest useful size that fits both dimensions.
+        int widthLimit = AppAdapter.tileWidthPx(INNER, 6, D);
+        assertTrue("tile exceeds its column", w <= widthLimit);
+        int tallerItem = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(w + 2), false, D);
+        int tallerNeeded = tallerItem * 4
+                + Math.round((AppAdapter.TOP_ROOM_DP + AppAdapter.COMPACT_BOTTOM_ROOM_DP) * D);
+        assertTrue("unnecessarily small tiles", w == widthLimit || tallerNeeded > GRID_H + 2);
     }
 
     @Test

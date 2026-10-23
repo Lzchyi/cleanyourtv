@@ -11,8 +11,8 @@ android {
         applicationId providers.gradleProperty('launcherApplicationId').getOrElse('com.gathin.tvhome')
         minSdk 26
         targetSdk 34
-        versionCode 7
-        versionName '2.6'
+        versionCode 8
+        versionName '2.6.0'
     }
 
     buildTypes {
@@ -24,6 +24,13 @@ android {
             // Sideloaded over ADB, never published: sign with the debug key so it installs over a debug build.
             signingConfig signingConfigs.debug
         }
+    }
+
+    // Optional private defaults for an existing TV. Theme files and saved UI choices still win.
+    // Keep local paths out of the repository: -PlauncherResourceOverlay=/absolute/res/directory
+    def resourceOverlay = providers.gradleProperty('launcherResourceOverlay').orNull
+    if (resourceOverlay != null) {
+        sourceSets.release.res.srcDir file(resourceOverlay)
     }
 
     packagingOptions {

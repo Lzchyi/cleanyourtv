@@ -66,6 +66,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
+import android.widget.TextClock;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -97,10 +98,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private static final int LAUNCHER_SETTINGS_REQUEST = 42;
     /** Sent by QuickSettingsActivity: open Launcher settings from here so Home rebuilds when they close. */
     static final String ACTION_LAUNCHER_SETTINGS = "com.gathin.tvhome.action.LAUNCHER_SETTINGS";
+    static final String ACTION_APP_LIBRARY = "com.gathin.tvhome.action.APP_LIBRARY";
+    private boolean libraryRequestPending;
+    private View[] libraryChrome;
+    private int[] libraryChromeVisibility;
     /** The system input switcher, forwarded here by InputsRequestActivity while handle_view_inputs is on. */
     static final String ACTION_VIEW_INPUTS = "com.android.tv.action.VIEW_INPUTS";
-    /** Tiles per row and dock slots (res/values/config.xml, columns). Set in onCreate. */
+    /** Regular Home row columns; the dock independently has four places. */
     static int COLUMNS = 4;
+    private static final int DOCK_SIZE = HomeGeometry.DOCK_CAPACITY;
+    private HomeGeometry homeGeometry;
     private boolean rtlAppGrid;
     private static final long MINUTE_MS = 60_000L;
     private static final long STATS_MS = 10_000L;
@@ -157,6 +164,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean advancedEffects;
     private TextView greeting;
     private View clockBlock;
+    private View homeHeader;
+    private boolean headerShown = true;
     private View btnInputs;
     /** config show_inputs_pill: false keeps the Inputs pill hidden even when the TV has inputs. */
     private boolean showInputsPill = true;
@@ -167,9 +176,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean pillsShown;
     private TextView shamsiDate;
     private TextView stats;
-    private List<RaceWeekend.Race> raceCalendar;
-    private View racePanel;
-    private TextView raceKicker, raceHeadline, raceSessions;
     /** config.xml show_stats, overridable by a theme. Off: the line is gone and nothing is read. */
     private boolean showStats;
     private boolean shamsi;
@@ -202,8 +208,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean reducedMotion;
     /** config.xml dock_row: the first row is a separate dock (band, parked low, top shelf) rather than plain grid. */
     private boolean dockRow;
-    /** The highlight springs past its target (config.xml, focus_overshoot); false goes straight there. */
-    private boolean focusOvershoot;
     /** Festive skin from the theme (see Festival); applied while it is active today. */
     private Festival festival = Festival.NONE;
     private boolean festive;
@@ -321,7 +325,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         @Override
         public void run() {
             updateGreeting();
-            updateRace();
             // The pill follows the network callbacks and each return to Home; only the diya's flame follows the
             // signal level, so only it needs this minute's binder calls (about 7 ms on the UI thread).
             if (festive) updateWifiLabel();
@@ -346,7 +349,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         advancedEffects = cfg.animations && cfg.advancedEffects;
         reducedMotion = cfg.reducedMotion;
         dockRow = cfg.dockRow;
-        focusOvershoot = cfg.focusOvershoot;
+        homeGeometry = new HomeGeometry(COLUMNS, dockRow);
         festival = cfg.festival;
         festive = festival.active(LocalDate.now());
         liveTvPkg = cfg.liveTvPackage;
@@ -362,6 +365,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         coocaaSources = cfg.coocaaSources;
 
         root = findViewById(R.id.root);
+        homeHeader = findViewById(R.id.homeHeader);
         root.setBackgroundColor(cfg.backgroundColor);
         // root fills the window with an opaque colour (Config keeps background_color opaque), so the window's own
         // black under it is a second full-screen fill on every frame for nothing. The starting window still uses
@@ -396,14 +400,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         greeting = findViewById(R.id.greeting);
         clockBlock = findViewById(R.id.leftBlock);
         greetingColor = greeting.getCurrentTextColor();
+        TextClock dateClock = findViewById(R.id.date);
+        String datePattern = android.text.format.DateFormat.getBestDateTimePattern(Locale.getDefault(), "EEEEdMMMM");
+        dateClock.setFormat12Hour(datePattern);
+        dateClock.setFormat24Hour(datePattern);
         btnWifi = findViewById(R.id.btnWifi);
         shamsiDate = findViewById(R.id.shamsiDate);
         stats = findViewById(R.id.stats);
-        raceCalendar = cfg.raceCalendar;
-        racePanel = findViewById(R.id.racePanel);
-        raceKicker = findViewById(R.id.raceKicker);
-        raceHeadline = findViewById(R.id.raceHeadline);
-        raceSessions = findViewById(R.id.raceSessions);
         showStats = cfg.showStats;
         shamsi = cfg.shamsiDate;
         greetingName = cfg.greetingName;
@@ -420,7 +423,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         grid = findViewById(R.id.grid);
         rtlAppGrid = getResources().getBoolean(R.bool.rtl_app_grid);
         // Mirror only the app grid; the header and other locales keep their own layouts.
-        grid.setLayoutManager(new GridLayoutManager(this, COLUMNS) {
+        grid.setLayoutManager(new GridLayoutManager(this, homeGeometry.spanCount()) {
             @Override
             protected boolean isLayoutRTL() {
                 return rtlAppGrid;
@@ -439,7 +442,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             public boolean requestChildRectangleOnScreen(@NonNull RecyclerView parent, @NonNull View child,
                                                          @NonNull Rect rect, boolean immediate,
                                                          boolean focusedChildVisible) {
-                if (dockRow && getPosition(child) < COLUMNS) return false;
+                if (homeGeometry.isDock(getPosition(child))) return false;
                 int top = child.getTop() + rect.top;
                 int bottom = top + rect.height();
                 // A row already fully on screen stays put, even inside the bottom padding (the last row
@@ -457,7 +460,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
         });
         ((GridLayoutManager) grid.getLayoutManager()).setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
-            @Override public int getSpanSize(int position) { return adapter != null && adapter.isLibraryAt(position) ? COLUMNS : 1; }
+            @Override public int getSpanSize(int position) {
+                return adapter != null && adapter.isLibraryAt(position) ? homeGeometry.spanSize(DOCK_SIZE) : homeGeometry.spanSize(position);
+            }
         });
         grid.setHasFixedSize(true);
         grid.setItemAnimator(null);
@@ -473,13 +478,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             public void onChildViewDetachedFromWindow(@NonNull View v) {
             }
         });
-        if (dockRow) grid.addItemDecoration(new DockDecoration(COLUMNS, density, cinematic, cfg.alwaysShowNames, cfg.dockOpacity, cfg.dockGlass));
+        if (dockRow) grid.addItemDecoration(new DockDecoration(DOCK_SIZE, density, cinematic, cfg.alwaysShowNames, cfg.dockOpacity, cfg.dockGlass));
         // Reduced motion: the tiles are simply there, with no entrance (reloadApps skips it there too).
         if (animations && !reducedMotion) {
             grid.setLayoutAnimation(new LayoutAnimationController(
                     AnimationUtils.loadAnimation(this, R.anim.tile_enter), 0.06f));
         }
-        adapter = new AppAdapter(this, this, COLUMNS, cfg);
+        adapter = new AppAdapter(this, this, DOCK_SIZE, cfg);
         dockApps = cfg.dockApps;
         fillDockLeavesSlots = !cfg.fillDock;
         Order savedOrder = Order.load(Order.file(this));
@@ -488,24 +493,27 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         // tvOS layout: push the dock row towards the bottom of the screen, leaving room for
         // rows_below_dock grid rows under it; the rest of the grid stays below until you press Down.
-        int rowsBelowDock = cfg.rowsBelowDock;
+        int rowsBelowDock = HomeGeometry.initialVisibleRows(cfg.rowsBelowDock, cfg.showLibraryShortcut);
         grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             int h = b - t;
             // Item height follows the tile size, which follows the columns and the rows that must fit (AppAdapter.tileWidthPx).
             int inner = (r - l) - grid.getPaddingLeft() - grid.getPaddingRight();
             int tileW = AppAdapter.tileWidthPx(inner, h, COLUMNS, rowsBelowDock, cfg.dockTitle, cfg.dockRow, density);
-            int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(tileW), density);
-            int dockRow = itemH + (int) (AppAdapter.DOCK_EXTRA_DP * density);   // item height plus DockDecoration offsets
-            int gridRows = itemH * rowsBelowDock;
+            int dockW = AppAdapter.tileWidthPx(inner, h, DOCK_SIZE, rowsBelowDock, cfg.dockTitle, cfg.dockRow, density);
+            int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(tileW), cfg.dockRow, density);
+            int dockRow = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(dockW), cfg.dockRow, density)
+                    + (int) (AppAdapter.DOCK_EXTRA_DP * density);
             // Keep the hero below the header when the library is enabled on a short screen,
             // even when the theme requests an extra visible row below the dock.
-            int shelfClearance = cfg.appLibrary ? hero.getMeasuredHeight() + (int) (40 * density) : 0;
-            int want = Math.max(shelfClearance, h - dockRow - gridRows - (int) (AppAdapter.BOTTOM_ROOM_DP * density));
+            int headerBottom = homeHeader.getMeasuredHeight() + Math.round(26 * density);
+            int shelfClearance = headerBottom + (cfg.dockTitle
+                    ? hero.getMeasuredHeight() + Math.round(40 * density) : Math.round(12 * density));
+            int want = HomeGeometry.dockTopPadding(h, dockRow, itemH, rowsBelowDock, shelfClearance);
             // Where the rows cannot fit even at the smallest tile (3 rows with the title on), the title keeps its
             // room above the dock and the last rows run off the bottom instead of the title drawing over the clock.
             if (MainActivity.this.dockRow && cfg.dockTitle && rowsBelowDock > 0) want = Math.max(want, (int) (AppAdapter.TITLE_ROOM_DP * density));
             // No dock to push down: the grid starts at the top, with room for the first row's zoom and glass.
-            if (!MainActivity.this.dockRow) want = (int) (AppAdapter.TOP_ROOM_DP * density);
+            if (!MainActivity.this.dockRow) want = headerBottom + (int) (AppAdapter.TOP_ROOM_DP * density);
             if (grid.getPaddingTop() != want) {
                 grid.setPadding(grid.getPaddingLeft(), want, grid.getPaddingRight(), grid.getPaddingBottom());
             }
@@ -538,16 +546,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 v.setTranslationY(value + glassScrollShift);
             }
         });
-        for (SpringAnimation s : new SpringAnimation[]{springX, springY}) {
-            if (reducedMotion) {
-                Motion.reduce(s);
-            } else if (!focusOvershoot) {
-                // Critically damped: glides straight onto the tile without swinging past it.
-                s.setSpring(new SpringForce().setStiffness(advancedEffects ? 520f : 440f).setDampingRatio(1f));
-            } else {
-                s.setSpring(new SpringForce().setStiffness(advancedEffects ? 320f : 260f)
-                        .setDampingRatio(advancedEffects ? 0.76f : 0.58f));
-            }
+        for (SpringAnimation spring : new SpringAnimation[]{springX, springY}) {
+            spring.setSpring(new SpringForce().setStiffness(reducedMotion ? 1400f : 700f).setDampingRatio(1f));
+            spring.setMinimumVisibleChange(reducedMotion ? 1.5f : 1f);
         }
 
         btnInputs = findViewById(R.id.btnInputs);
@@ -561,22 +562,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnSettings.setOnClickListener(v -> open(systemIntent(Settings.ACTION_SETTINGS)));
         btnReorder = findViewById(R.id.btnReorder);
         btnReorder.setOnClickListener(v -> toggleReorder());
-        btnReorder.setVisibility(cfg.reorderButton ? View.VISIBLE : View.GONE);
+        btnReorder.setVisibility(View.GONE);
         if (!cfg.showNetworkPill) btnWifi.setVisibility(View.GONE);
         showInputsPill = cfg.showInputsPill;
-        btnLibraryTop = findViewById(R.id.btnLibraryTop);
-        btnLibraryTop.setOnClickListener(v -> {
-            onLibraryRequested();
-            libraryFromTopBar = true;   // closing it goes back to this button, not to the pill after the last row
-        });
-        btnLibraryTop.setVisibility(cfg.libraryButton && cfg.appLibrary ? View.VISIBLE : View.GONE);
-        iconOnlyButtons = cfg.iconOnlyButtons;
-        wifiIconOnly = iconOnlyButtons && cfg.wifiLabelWidth <= 0;
-        if (iconOnlyButtons) {
-            if (cfg.wifiLabelWidth > 0) btnWifi.setMaxWidth(Math.round(cfg.wifiLabelWidth * density));
-            else makeIconOnly(btnWifi);
-            makeIconOnly((TextView) btnSettings);
-        }
+        findViewById(R.id.btnLibraryTop).setVisibility(View.GONE);
+        makeIconOnly((TextView) btnInputs);
+        makeIconOnly(btnWifi);
+        makeIconOnly((TextView) btnSettings);
         btnSettings.setOnLongClickListener(v -> {
             showSettingsMenu();
             return true;
@@ -584,13 +576,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         // Keep focus on the top bar at its ends and at the top: Android's focus finder would otherwise
         // jump to a tile far below when there is nothing in that direction.
-        boolean rtlMenuBar = getResources().getBoolean(R.bool.rtl_menu_bar);
+        boolean rtlMenuBar = false;   // Inputs → Network → Settings in every locale.
         View.OnKeyListener pillKeys = (v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 // Back to the dock tile Up came from, not wherever the focus finder lands.
-                focusTile(lastFocused % COLUMNS);
+                if (adapter.appCount() == 0) onLibraryRequested();
+                else focusTile(Math.min(lastFocused, Math.min(adapter.appCount(), dockRow ? DOCK_SIZE : COLUMNS) - 1));
                 return true;
             }
             int firstButton = btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : firstTopButton().getId();
@@ -603,13 +596,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnWifi.setOnKeyListener(pillKeys);
         btnSettings.setOnKeyListener(pillKeys);
         btnReorder.setOnKeyListener(pillKeys);
-        btnLibraryTop.setOnKeyListener(pillKeys);
-        if (advancedEffects) {
-            for (View button : new View[]{btnInputs, btnWifi, btnReorder, btnLibraryTop, btnSettings}) {
-                button.setOnFocusChangeListener((view, focused) -> view.animate()
-                        .scaleX(focused ? 1.04f : 1f).scaleY(focused ? 1.04f : 1f)
-                        .setDuration(reducedMotion ? Motion.REDUCED_MS : 160).start());
-            }
+        for (View button : new View[]{btnInputs, btnWifi, btnSettings}) {
+            button.setOnFocusChangeListener((view, focused) -> {
+                if (focused) {
+                    setHeaderVisible(true);
+                    wallpaperPlayer.setNavigationDepth(0, animations && !reducedMotion);
+                }
+                view.animate().cancel();
+                float scale = focused && animations ? 1.05f : 1f;
+                if (animations && !reducedMotion) view.animate().scaleX(scale).scaleY(scale).setDuration(160).start();
+                else { view.setScaleX(scale); view.setScaleY(scale); }
+            });
         }
         if (festive) applyFestiveSkin((TextView) btnInputs, (TextView) btnSettings);
 
@@ -617,6 +614,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         getWindow().getDecorView().getViewTreeObserver().addOnGlobalFocusChangeListener((oldF, newF) -> {
             boolean onTile = newF != null && newF.getId() == R.id.card;
             if (!onTile) hideGlass();
+            if (newF != null && !onTile) {
+                int id = newF.getId();
+                if (id == R.id.btnInputs || id == R.id.btnWifi || id == R.id.btnSettings) {
+                    setHeaderVisible(true);
+                    wallpaperPlayer.setNavigationDepth(0, animations && !reducedMotion);
+                }
+            }
         });
 
         packageFilter.addAction(Intent.ACTION_PACKAGE_ADDED);
@@ -643,7 +647,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     .build(), vpnCallback);
         }
         // Not after recreate(): the launch intent survives it and would open the settings again.
-        if (savedInstanceState == null && !openLauncherSettingsIfAsked(getIntent())) openInputsIfAsked(getIntent());
+        root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> showPendingLibrary());
+        if (savedInstanceState == null && !openLauncherSettingsIfAsked(getIntent()) && !openInputsIfAsked(getIntent()))
+            openLibraryIfAsked(getIntent());
     }
 
     /**
@@ -689,6 +695,22 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         return true;
     }
 
+    private boolean openLibraryIfAsked(Intent intent) {
+        if (intent == null || !(Intent.ACTION_ALL_APPS.equals(intent.getAction()) || ACTION_APP_LIBRARY.equals(intent.getAction())))
+            return false;
+        android.util.Log.i("TvHome.Keys", "Received library action=" + intent.getAction());
+        setIntent(new Intent(Intent.ACTION_MAIN));   // recreation must not reopen an already handled request
+        libraryRequestPending = true;
+        root.post(this::showPendingLibrary);
+        return true;
+    }
+
+    private void showPendingLibrary() {
+        if (!libraryRequestPending || isFinishing() || !root.isLaidOut() || !hasWindowFocus()) return;
+        libraryRequestPending = false;
+        onLibraryRequested();
+    }
+
     private boolean openLauncherSettingsIfAsked(Intent intent) {
         if (intent == null || !ACTION_LAUNCHER_SETTINGS.equals(intent.getAction())) return false;
         setIntent(new Intent(Intent.ACTION_MAIN));
@@ -697,25 +719,24 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     /**
-     * Home pressed while Home is already in front: singleTask delivers it here, then onResume runs.
-     * Back to the top with the first dock tile focused, like the stock launcher. Back from an app
-     * never comes this way, so returning to the app you left from is unchanged (#118).
+     * Preserve the owner's last focused app on Home intents, including low-memory activity recreation.
+     * TileRefresh keeps the instant return path when the app catalog has not changed.
      */
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (openLauncherSettingsIfAsked(intent)) return;
         if (openInputsIfAsked(intent)) return;
+        if (openLibraryIfAsked(intent)) return;
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
-        grid.scrollToPosition(0);
-        lastFocused = 0;
-        lastFocusedKey = adapter.getItemCount() > 0 ? adapter.keyAt(0) : null;
+        if (appLibrary != null) appLibrary.close();
+        if (openPopup != null) openPopup.dismiss();
         if (stopped) {
             tileRefresh.onHomeAgain();
         } else {
             // Still on screen (the quick panel was over it, or Home was already in front): the tiles are current,
-            // so only go back to the first one; rebuilding would replay the entrance animation for nothing.
-            grid.post(() -> focusTile(0));
+            // so only restore focus; rebuilding would replay the entrance animation for nothing.
+            grid.post(() -> focusTile(lastFocused));
         }
     }
 
@@ -759,7 +780,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         if (openLiveTvAfterBoot()) return;
         updateGreeting();
-        updateRace();
         // The network and Inputs pills keep their state while Home is in the background, and callbacks update them
         // when the network or the inputs change, so this refresh only catches anything missed. Its binder calls
         // (about 7 ms on a TCL C755, most of it WifiManager.getConnectionInfo) would hold up the first frame back
@@ -807,10 +827,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      */
     private void reloadApps(boolean animate, boolean rebuild, boolean entrance) {
         cancelPendingFocusScroll();
-        RecyclerView.ViewHolder footer = grid.findViewHolderForAdapterPosition(adapter.appCount());
-        final boolean restoreLibrary = adapter.isLibraryAt(adapter.appCount()) && footer != null
-                && footer.itemView.findViewById(R.id.btnLibrary) != null
-                && footer.itemView.findViewById(R.id.btnLibrary).hasFocus();
+        final boolean restoreLibrary = adapter.isLibraryAt(focusedTilePosition());
         // Capture the app before rebinding can move focus and overwrite its key.
         final String returnKey = lastFocusedKey;
         final int returnSlot = lastFocused;
@@ -893,7 +910,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         final int returnSlot = lastFocused;
         grid.post(() -> {
             int pos = adapter.positionOf(returnKey);
-            if (returnToLibrary || libraryFocusPending) focusLibrary();
+            if (returnToLibrary || libraryFocusPending) restoreLibraryFocus();
             else focusTile(pos >= 0 ? pos : returnSlot);
             tilesReady = true;
             showCardPrompt();
@@ -969,7 +986,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
-            if (libraryFocusPending && appLibrary == null) focusLibrary();
+            showPendingLibrary();
+            if (libraryFocusPending && appLibrary == null) restoreLibraryFocus();
             showCardPrompt();
         }
     }
@@ -1020,6 +1038,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_ALL_APPS) {
+            // Foreground only. Global/system interception remains the TV vendor's responsibility.
+            android.util.Log.i("TvHome.Keys", "Received KEYCODE_ALL_APPS action=" + event.getAction());
+            if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) onLibraryRequested();
+            return true;
+        }
         if (handleSettingsKey(event)) return true;
         if (!reordering) return super.dispatchKeyEvent(event);
         if (dockEditing) return dispatchDockEdit(event);
@@ -1084,8 +1108,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         dockedAtStart = adapter.dockFilled();
         for (int i = 0; i < Math.min(dockedAtStart, adapter.movableCount()); i++) dockInSession.add(adapter.keyAt(i));
         adapter.setReordering(true);
-        if (adapter.hasEmptySlots()) reloadTiles();   // every position must hold a tile that can move
+        if (adapter.hasEmptySlots() || adapter.libraryPosition() >= 0) reloadTiles();   // every position must hold a tile that can move
         reordering = true;
+        int restoredPosition = adapter.positionOf(lastFocusedKey);
+        if (restoredPosition >= 0) lastFocused = restoredPosition;
         orderAtStart = adapter.movableKeys();
         glass.setAccent(REORDER_ACCENT);
         btnReorder.setActivated(true);
@@ -1131,10 +1157,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (!down) {
                 int n = adapter.movableCount();
                 if (dockEditSlot < 0) {
-                    if (pos < Math.min(COLUMNS, n)) {
+                    if (pos < Math.min(DOCK_SIZE, n)) {
                         dockEditSlot = pos;
                         dimOthers();
-                        focusTile(Math.min(COLUMNS, n - 1));
+                        focusTile(Math.min(DOCK_SIZE, n - 1));
                         Toast.makeText(this, R.string.dock_edit_pick_app, Toast.LENGTH_LONG).show();
                     }
                 } else if (pos < n) {
@@ -1155,7 +1181,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 adapter.move(adapter.positionOf(slotKey), pos);
             });
             dockInSession.add(adapter.keyAt(slot));
-            if (pos >= COLUMNS) dockInSession.remove(slotKey);
+            if (pos >= DOCK_SIZE) dockInSession.remove(slotKey);
         }
         endReorder();
         refocusAfterLayout(slot);
@@ -1186,7 +1212,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (movingKey != null) {
             return pos != RecyclerView.NO_POSITION && movingKey.equals(adapter.keyAt(pos)) ? 1f : 0.45f;
         }
-        if (dockEditSlot >= 0 && pos >= 0 && pos < COLUMNS && pos != dockEditSlot) return 0.45f;
+        if (dockEditSlot >= 0 && pos >= 0 && pos < DOCK_SIZE && pos != dockEditSlot) return 0.45f;
         return 1f;
     }
 
@@ -1207,8 +1233,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // come back after the mode go after it (#499). With fill_dock true every dock slot holds an app anyway.
         int docked = -1;
         if (fillDockLeavesSlots) {
-            docked = DockSlots.dockCount(keys, COLUMNS, dockInSession);
-            keys = DockSlots.dockFirst(keys, COLUMNS, dockInSession);
+            docked = DockSlots.dockCount(keys, DOCK_SIZE, dockInSession);
+            keys = DockSlots.dockFirst(keys, DOCK_SIZE, dockInSession);
         }
         dockInSession = null;
         if (!keys.equals(before) || (fillDockLeavesSlots && docked != dockedAtStart)) {
@@ -1219,7 +1245,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 Toast.makeText(this, R.string.reorder_not_saved, Toast.LENGTH_SHORT).show();
             }
         }
-        if (fillDockLeavesSlots) reloadTiles();   // the empty dock slots left out while reordering come back
+        if (fillDockLeavesSlots || adapter.libraryShortcutEnabled()) reloadTiles();   // the empty dock slots left out while reordering come back
     }
 
     /**
@@ -1237,13 +1263,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // rtl_app_grid (Hebrew) mirrors the grid: position 0 is on the right, so Left moves towards the end.
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) to = rtlAppGrid ? from + 1 : from - 1;
         else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) to = rtlAppGrid ? from - 1 : from + 1;
-        else if (keyCode == KeyEvent.KEYCODE_DPAD_UP) to = from - COLUMNS;
-        else if (from + COLUMNS < n) to = from + COLUMNS;
-        else to = from / COLUMNS < (n - 1) / COLUMNS ? n - 1 : from;
+        else to = homeGeometry.vertical(from, n, keyCode == KeyEvent.KEYCODE_DPAD_DOWN);
         if (to < 0 || to >= n || to == from) return;
         keepScroll(() -> adapter.move(from, to));
         // The owner carries this tile: where it lands decides whether it is in the dock, not dock_apps (#499).
-        if (to < COLUMNS) dockInSession.add(movingKey);
+        if (to < DOCK_SIZE) dockInSession.add(movingKey);
         else dockInSession.remove(movingKey);
         refocusAfterLayout(to);
     }
@@ -1292,33 +1316,87 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     // ---- glass highlight -------------------------------------------------------------------------
 
+    private String libraryReturnKey;
+    private int libraryReturnSlot, libraryReturnFirst, libraryReturnOffset;
+    private int libraryReturnTopId = View.NO_ID;
+    private boolean libraryReturnShortcut;
+
     @Override
     public void onLibraryRequested() {
-        if (appLibrary != null) appLibrary.close();
+        if (appLibrary != null) return;
+        // Save focus before ending a reorder session can rebind or replace its tile holders.
+        libraryReturnKey = lastFocusedKey;
+        libraryReturnSlot = lastFocused;
+        View focused = getCurrentFocus();
+        int focusedId = focused == null ? View.NO_ID : focused.getId();
+        libraryReturnTopId = focusedId == R.id.btnInputs || focusedId == R.id.btnWifi
+                || focusedId == R.id.btnSettings ? focusedId : View.NO_ID;
+        libraryReturnShortcut = adapter.isLibraryAt(focusedTilePosition());
+        endReorder();
         if (openPopup != null) openPopup.dismiss();
+        cancelPendingFocusScroll();
+        GridLayoutManager manager = (GridLayoutManager) grid.getLayoutManager();
+        libraryReturnFirst = manager.findFirstVisibleItemPosition();
+        View first = manager.findViewByPosition(libraryReturnFirst);
+        libraryReturnOffset = first == null ? 0 : manager.getDecoratedTop(first) - grid.getPaddingTop();
         libraryFocusPending = false;
-        libraryFromTopBar = false;
+        setLibraryChromeVisible(false);
+        wallpaperPlayer.setNavigationDepth(2, animations && !reducedMotion);
         appLibrary = new AppLibraryDialog(this, animations, reducedMotion, adapter::containsPackage, () -> reloadApps(false), () -> {
             appLibrary = null;
             openPopup = null;
-            if (libraryFromTopBar) {
-                libraryFromTopBar = false;
-                btnLibraryTop.requestFocus();
-                return;
-            }
+            setLibraryChromeVisible(true);
             libraryFocusPending = true;
             grid.post(() -> {
-                if (libraryFocusPending && appLibrary == null && hasWindowFocus() && !isFinishing()) focusLibrary();
+                if (libraryFocusPending && hasWindowFocus() && !isFinishing()) restoreLibraryFocus();
             });
         });
         openPopup = appLibrary.popup;
         appLibrary.show();
     }
 
+    /** A Library overlays the live wallpaper, rather than duplicate Home controls beneath its own header. */
+    private void setLibraryChromeVisible(boolean visible) {
+        if (!visible) {
+            if (libraryChrome != null) return;
+            libraryChrome = new View[]{findViewById(R.id.homeContent), hero, glass, ambient, heroArt,
+                    findViewById(R.id.heroScrim)};
+            libraryChromeVisibility = new int[libraryChrome.length];
+            for (int i = 0; i < libraryChrome.length; i++) {
+                libraryChromeVisibility[i] = libraryChrome[i].getVisibility();
+                if (libraryChromeVisibility[i] != View.GONE) libraryChrome[i].setVisibility(View.INVISIBLE);
+            }
+        } else if (libraryChrome != null) {
+            for (int i = 0; i < libraryChrome.length; i++) libraryChrome[i].setVisibility(libraryChromeVisibility[i]);
+            libraryChrome = null;
+            libraryChromeVisibility = null;
+        }
+    }
+
+    private void restoreLibraryFocus() {
+        if (!libraryFocusPending || appLibrary != null) return;
+        libraryFocusPending = false;
+        if (libraryReturnTopId != View.NO_ID) {
+            View button = findViewById(libraryReturnTopId);
+            if (button != null && button.isShown() && button.isFocusable() && button.requestFocus()) return;
+        }
+        if (libraryReturnShortcut && adapter.libraryPosition() >= 0) { focusLibrary(); return; }
+        if (adapter.appCount() == 0) { firstTopButton().requestFocus(); return; }
+        GridLayoutManager manager = (GridLayoutManager) grid.getLayoutManager();
+        if (libraryReturnFirst >= 0 && libraryReturnFirst < adapter.getItemCount())
+            manager.scrollToPositionWithOffset(libraryReturnFirst, libraryReturnOffset);
+        int position = adapter.positionOf(libraryReturnKey);
+        int target = position >= 0 ? position : libraryReturnSlot;
+        grid.post(() -> focusTile(target));
+    }
+
     @Override
     public void onTileFocused(int position, View card) {
         lastFocused = position;
         lastFocusedKey = adapter.keyAt(position);
+        setHeaderVisible(homeGeometry.isFirstRow(position) && !adapter.isLibraryAt(position));
+        wallpaperPlayer.setNavigationDepth(homeGeometry.isDock(position) && !adapter.isLibraryAt(position) ? 1 : 2,
+                animations && !reducedMotion);
         // Focus restored before the first layout (cold start): the tile has no size yet, and the glass
         // would be sized to 2*pad. Run again once the tile is laid out.
         if (card.getWidth() == 0) {
@@ -1350,7 +1428,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         glassTargetX = x;
         glassTargetY = y;
         // Cinematic shelf: the highlight glows in the dock app's colour, plain white in the grid. app_glow: every tile.
-        boolean coloured = (appGlow || cinematic && position < COLUMNS) && !festive;
+        boolean coloured = (appGlow || cinematic && homeGeometry.isDock(position)) && !festive;
         int accent = coloured ? adapter.ambientColorAt(position) : 0;
         if ((cinematic || appGlow) && !festive && accent != glassAccent) {
             glassAccent = accent;
@@ -1374,7 +1452,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             springY.animateToFinalPosition(y - glassScrollShift);
         }
         View item = (View) card.getParent();
-        if (dockRow && position < COLUMNS) {
+        if (homeGeometry.isDock(position) && !adapter.isLibraryAt(position)) {
             // Dock: park it at the bottom of the screen and show the top shelf for this app.
             int decoratedTop = item.getTop() - (int) (6 * density);
             int dy = decoratedTop - grid.getPaddingTop();
@@ -1390,9 +1468,34 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // Below the dock (or in a plain grid) the glow follows the tile without the big name; letting it
             // fade out left the grid on plain black.
             showGlowOnly(position);
-            // Scroll just enough so the whole glass (not only the tile) is visible.
-            revealRect.set(0, -(int) pad * 2, item.getWidth(), item.getHeight() + (int) pad);
-            grid.requestChildRectangleOnScreen(item, revealRect, reducedMotion);
+            if (!dockRow && homeGeometry.isFirstRow(position)) {
+                // The plain grid's first row returns below the floating header; lower rows use the full viewport.
+                int dy = item.getTop() - grid.getPaddingTop();
+                if (Math.abs(dy) > 8 * density) {
+                    if (!animations || reducedMotion) grid.scrollBy(0, dy);
+                    else grid.smoothScrollBy(0, dy);
+                }
+            } else {
+                // Scroll just enough so the whole glass (not only the tile) is visible.
+                revealRect.set(0, -(int) pad * 2, item.getWidth(), item.getHeight() + (int) pad);
+                grid.requestChildRectangleOnScreen(item, revealRect, reducedMotion);
+            }
+        }
+    }
+
+    /** A floating header leaves the full viewport to lower app rows, with no reserved opaque strip. */
+    private void setHeaderVisible(boolean visible) {
+        if (headerShown == visible) return;
+        headerShown = visible;
+        homeHeader.animate().cancel();
+        if (visible) homeHeader.setVisibility(View.VISIBLE);
+        if (animations && !reducedMotion) {
+            homeHeader.animate().alpha(visible ? 1f : 0f).setDuration(160).withEndAction(() -> {
+                if (!headerShown) homeHeader.setVisibility(View.INVISIBLE);
+            }).start();
+        } else {
+            homeHeader.setAlpha(visible ? 1f : 0f);
+            if (!visible) homeHeader.setVisibility(View.INVISIBLE);
         }
     }
 
@@ -1484,7 +1587,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** The parts that never change: a larger name, the meta line and the dots, the artwork and the scrim. */
     private void setUpCinematicShelf() {
-        heroName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 68f);
+        heroName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 32f);
         heroName.setLetterSpacing(-0.025f);
         heroMeta.setVisibility(View.INVISIBLE);   // keeps its height, so the name does not jump when it fills in
         heroDots.setVisibility(View.VISIBLE);
@@ -1568,7 +1671,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** One dot per dock app, the focused one drawn long and white. Hebrew docks start on the right, so do the dots. */
     private void updateHeroDots(int position) {
-        int count = Math.min(adapter.dockFilled(), COLUMNS);
+        int count = Math.min(adapter.dockFilled(), DOCK_SIZE);
         heroDots.setVisibility(count > 1 ? View.VISIBLE : View.INVISIBLE);
         if (heroDots.getChildCount() != count) {
             heroDots.removeAllViews();
@@ -1922,42 +2025,21 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     public boolean onTileVerticalKey(int position, int keyCode) {
         int count = adapter.appCount();
-        int target;
-        // Horizontal: swallow the key at a row's ends so focus never wraps to the next row or
-        // escapes up into the top bar. Mid-row moves fall through to the default focus search.
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            boolean forward = rtlAppGrid ? keyCode == KeyEvent.KEYCODE_DPAD_LEFT : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
-            if (forward && position == adapter.focusablePosition(count - 1) && adapter.isLibraryAt(count)) {
-                focusLibrary();
-                return true;
-            }
-            // In the dock, the last app is the row's end: the empty slots after it take no focus.
-            int rowCount = position < COLUMNS ? Math.min(count, adapter.dockFilled()) : count;
-            return GridNavigation.atHorizontalEdge(position, rowCount, COLUMNS,
-                    rtlAppGrid, keyCode == KeyEvent.KEYCODE_DPAD_LEFT);
+            int rowCount = homeGeometry.isDock(position) ? Math.min(count, adapter.dockFilled()) : count;
+            return homeGeometry.atHorizontalEdge(position, rowCount, rtlAppGrid, keyCode == KeyEvent.KEYCODE_DPAD_LEFT);
         }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            if (position < COLUMNS) return false;          // dock row: let focus move to the top bar
-            target = position - COLUMNS;
+        boolean down = keyCode == KeyEvent.KEYCODE_DPAD_DOWN;
+        int shortcut = adapter.libraryPosition();
+        int target = down ? homeGeometry.down(position, count, shortcut) : homeGeometry.vertical(position, count, false);
+        if (target < 0) {
+            if (down) onLibraryRequested();
+            else return false;   // The first actual row goes to the top controls.
         } else {
-            int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
-            if (position >= lastRowStart) {
-                if (adapter.isLibraryAt(count)) focusLibrary();
-                return true;
-            }
-            target = Math.min(position + COLUMNS, count - 1);
+            focusTile(target);
         }
-        focusTile(target);
-        // The default focus search clicks for Left/Right; Up/Down are handled here, so click for them too.
-        grid.playSoundEffect(keyCode == KeyEvent.KEYCODE_DPAD_UP
-                ? SoundEffectConstants.NAVIGATION_UP : SoundEffectConstants.NAVIGATION_DOWN);
+        grid.playSoundEffect(down ? SoundEffectConstants.NAVIGATION_DOWN : SoundEffectConstants.NAVIGATION_UP);
         return true;
-    }
-
-    @Override public void onLibraryFocused() {
-        libraryFocusPending = false;
-        hideGlass();
-        hideHero();
     }
 
     /** The first top-bar button after Inputs that is shown: the network pill, Reorder, then Settings (always there). */
@@ -1967,48 +2049,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         return findViewById(R.id.btnSettings);
     }
 
-    @Override public void onLibraryUp() {
-        if (adapter.appCount() == 0) { firstTopButton().requestFocus(); return; }
-        int lastRow = ((adapter.appCount() - 1) / COLUMNS) * COLUMNS;
-        focusTile(Math.min(lastRow + lastFocused % COLUMNS, adapter.appCount() - 1));
-    }
-
     private void focusLibrary() {
-        cancelPendingFocusScroll();
-        int position = adapter.appCount();
-        if (!adapter.isLibraryAt(position)) return;
-        RecyclerView.ViewHolder holder = grid.findViewHolderForAdapterPosition(position);
-        if (holder != null) {
-            View button = holder.itemView.findViewById(R.id.btnLibrary);
-            Rect visible = new Rect();
-            if (button.getGlobalVisibleRect(visible) && visible.height() >= button.getHeight()) {
-                if (button.requestFocus()) libraryFocusPending = false;
-                return;
-            }
-        }
-        if (!animations) {
-            grid.scrollToPosition(position);
-            grid.post(() -> {
-                if (appLibrary != null || !hasWindowFocus()) return;
-                RecyclerView.ViewHolder footer = grid.findViewHolderForAdapterPosition(adapter.appCount());
-                if (footer != null && adapter.isLibraryAt(adapter.appCount())
-                        && footer.itemView.findViewById(R.id.btnLibrary).requestFocus()) libraryFocusPending = false;
-            });
-            return;
-        }
-        pendingFocusScroll = new RecyclerView.OnScrollListener() {
-            @Override public void onScrollStateChanged(@NonNull RecyclerView rv, int state) {
-                if (state != RecyclerView.SCROLL_STATE_IDLE) return;
-                rv.removeOnScrollListener(this);
-                if (pendingFocusScroll != this) return;
-                pendingFocusScroll = null;
-                RecyclerView.ViewHolder footer = rv.findViewHolderForAdapterPosition(position);
-                if (footer != null && footer.itemView.findViewById(R.id.btnLibrary).requestFocus())
-                    libraryFocusPending = false;
-            }
-        };
-        grid.addOnScrollListener(pendingFocusScroll);
-        grid.smoothScrollToPosition(position);
+        int position = adapter.libraryPosition();
+        if (position >= 0) focusTile(position);
+        else if (adapter.appCount() == 0) firstTopButton().requestFocus();
     }
 
     private void cancelPendingFocusScroll() {
@@ -2023,7 +2067,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         libraryFocusPending = false;
         cancelPendingFocusScroll();
         if (adapter.appCount() == 0) {
-            if (adapter.isLibraryAt(0)) focusLibrary();
+            if (adapter.libraryPosition() >= 0) focusLibrary();
             else firstTopButton().requestFocus();
             return;
         }
@@ -2108,61 +2152,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (shamsi) shamsiDate.setText(Shamsi.today(getResources()));
     }
 
-    // ---- race-weekend panel (a theme's race_calendar) -----------------------------------------------
-
-    private static final int RACE_RED = 0xFFFF3B2F;
-
-    /**
-     * Shows or hides the race-weekend panel for this minute. Text only, set once a minute with the clock:
-     * nothing animates, so the panel costs the GPU nothing between ticks.
-     */
-    private void updateRace() {
-        if (raceCalendar.isEmpty()) return;
-        RaceWeekend.State s = RaceWeekend.at(raceCalendar, java.time.Instant.now());
-        if (s == null) {
-            racePanel.setVisibility(View.GONE);
-            return;
-        }
-        RaceWeekend.Race race = s.race;
-        raceKicker.setText(race.place.isEmpty()
-                ? getString(R.string.race_kicker_no_place, race.round, race.shortName())
-                : getString(R.string.race_kicker, race.round, race.shortName(), race.place));
-
-        if (s.live != null) {
-            SpannableString live = new SpannableString("\u25CF  " + getString(R.string.race_live, s.live.title(getResources())));
-            live.setSpan(new android.text.style.ForegroundColorSpan(RACE_RED), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            raceHeadline.setText(live);
-        } else if (s.next != null) {
-            String in = RaceWeekend.countdown(getResources(), s.untilNext);
-            raceHeadline.setText(s.next.isRace() ? getString(R.string.race_lights_out, in)
-                    : getString(R.string.race_next, s.next.title(getResources()), in));
-        } else {
-            raceHeadline.setText(R.string.race_finished);
-        }
-
-        // FP1 FRI 11:00 PM   FP2 SAT 2:30 AM ...: done sessions fade, the live one is red, the next one bright.
-        java.time.format.DateTimeFormatter when = java.time.format.DateTimeFormatter.ofPattern(
-                android.text.format.DateFormat.is24HourFormat(this) ? "EEE HH:mm" : "EEE h:mm a", Locale.getDefault())
-                .withZone(java.time.ZoneId.systemDefault());
-        android.text.SpannableStringBuilder row = new android.text.SpannableStringBuilder();
-        for (int i = 0; i < race.sessions.size(); i++) {
-            RaceWeekend.Session session = race.sessions.get(i);
-            if (i > 0) row.append("     ");
-            int start = row.length();
-            row.append(session.shortName(getResources())).append("  ").append(when.format(session.start).toUpperCase(Locale.getDefault()));
-            int color;
-            switch (s.statuses.get(i)) {
-                case DONE: color = 0x47FFFFFF; break;
-                case LIVE: color = RACE_RED; break;
-                case NEXT: color = 0xFFFFFFFF; break;
-                default: color = 0x99FFFFFF;
-            }
-            row.setSpan(new android.text.style.ForegroundColorSpan(color), start, row.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        }
-        raceSessions.setText(row);
-        racePanel.setVisibility(View.VISIBLE);
-    }
-
     private void refreshPillsAfterNextDraw() {
         root.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
             @Override
@@ -2225,33 +2214,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
         } catch (Exception ignored) {
         }
-        // With a VPN app configured, a VPN that is down matters too: show a red "VPN off" capsule then.
-        boolean vpnDown = !vpn && online && !vpnApp.isEmpty();
-        if (vpn || vpnDown) {
-            // Network name, then the green lock-and-VPN (or red "VPN off") capsule drawn in place of the word.
-            String badge = getString(vpn ? R.string.vpn : R.string.vpn_off);
-            VpnBadge span = new VpnBadge(vpn ? getDrawable(R.drawable.ic_lock) : null, density);
-            // The pill has a maximum width and ellipsizes at the end, which would cut the badge off after
-            // a long network name, so shorten the name to whatever room the badge leaves. The total paddings
-            // include the Wi-Fi icon.
-            TextPaint paint = btnWifi.getPaint();
-            float room = btnWifi.getMaxWidth() - btnWifi.getTotalPaddingStart() - btnWifi.getTotalPaddingEnd()
-                    - span.getSize(paint, badge, 0, badge.length(), null) - paint.measureText(" ") - 2 * density;
-            String name = TextUtils.ellipsize(text, paint, Math.max(0, room), TextUtils.TruncateAt.END).toString();
-            // A long badge ("VPN отключён") can leave room for a stub like "MT…", which says nothing and, after
-            // rounding, can push the badge itself out of the pill. Show the badge alone then.
-            // The space stays even then: a line holding only the span gets no font metrics and collapses.
-            text = name.length() < text.length() && name.length() < 5 ? "" : name;
-            SpannableString label = new SpannableString(text + " " + badge);
-            label.setSpan(span, text.length() + 1, label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            if (!TextUtils.equals(btnWifi.getText(), label)) btnWifi.setText(label);
-        } else if (!TextUtils.equals(btnWifi.getText(), text)) {
-            btnWifi.setText(text);
-        }
-        if (wifiIconOnly) {
-            btnWifi.setContentDescription(btnWifi.getText());
-            btnWifi.setText(null);
-        }
+        String description = text;
+        if (vpn) description += " · " + getString(R.string.vpn);
+        else if (online && !vpnApp.isEmpty()) description += " · " + getString(R.string.vpn_off);
+        btnWifi.setContentDescription(description);
+        findViewById(R.id.vpnIndicator).setVisibility(vpn ? View.VISIBLE : View.GONE);
         if (festive && diya != null) {
             if (online && flame == 0) flame = 3;   // online some other way (cellular, USB tethering)
             diya.setSteady(steady);
@@ -2264,18 +2231,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
     }
 
-    /** config.xml icon_only_buttons. */
-    private boolean iconOnlyButtons;
-    /** icon_only_buttons without wifi_label_width: the Wi-Fi pill shows no network name. */
-    private boolean wifiIconOnly;
-    /** The app library button in the top bar (library_button). */
-    private View btnLibraryTop;
-    /** The open library came from that button: closing it returns there instead of scrolling to the grid's end. */
-    private boolean libraryFromTopBar;
 
     /** Turns a labelled top pill into the round TopButtonIcon shape: no text, the icon centred by even padding. */
     private void makeIconOnly(TextView pill) {
-        pill.setContentDescription(pill.getText());
+        if (!TextUtils.isEmpty(pill.getText())) pill.setContentDescription(pill.getText());
         pill.setText(null);
         pill.setMaxWidth(Integer.MAX_VALUE);
         int pad = Math.round(10 * density);
@@ -2663,12 +2622,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** Drop in: fade and unfold from the top edge, hanging under the anchor pill. */
     private void dropIn(PopupWindow popup, View panel, View anchor, int gravity) {
-        panel.setAlpha(0f);
+        boolean motion = animations && !reducedMotion && android.animation.ValueAnimator.areAnimatorsEnabled();
+        panel.setAlpha(motion ? 0f : 1f);
         panel.setPivotY(0f);
-        panel.setScaleY(0.92f);
-        panel.setTranslationY(-8 * density);
+        panel.setScaleY(motion ? 0.96f : 1f);
+        panel.setTranslationY(motion ? -8 * density : 0f);
         popup.showAsDropDown(anchor, 0, (int) (10 * density), gravity);
-        panel.animate().alpha(1f).scaleY(1f).translationY(0f).setDuration(reducedMotion ? Motion.REDUCED_MS : 220)
+        if (motion) panel.animate().alpha(1f).scaleY(1f).translationY(0f).setDuration(180)
                 .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
     }
 

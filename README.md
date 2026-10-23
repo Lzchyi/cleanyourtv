@@ -29,6 +29,8 @@ until the 19th; old links work.
 
 **Themes, switches and add-ons:** [cleanyour.tv/addons](https://cleanyour.tv/addons)
 
+> **Personal fork — Premium v2.6.0:** a four-app translucent dock, vertical App Library and compact launcher settings, based on upstream v2.6.0. See the [redesign and upgrade guide](docs/premium-redesign.md). The F1 countdown feature has been removed; installed F1 TV is unchanged.
+
 ## How it works
 
 Android TVs have the same debug bridge as Android phones. Switch on USB debugging in the TV's
@@ -70,7 +72,7 @@ A home screen that looks like an Apple TV and gets out of the way:
 | **A top shelf** | Names the focused app in large type, with an ambient glow in a colour taken from its artwork. |
 | **The rest of your apps in a grid** | Slides up when you press Down. |
 | **One floating glass highlight** | Springs from tile to tile. The focused tile lifts and shows its name. |
-| **Three frosted buttons** | Inputs (HDMI ports under the names you gave them in the TV's settings, AV, Live TV), Wi-Fi or Ethernet with the network name, Settings. |
+| **Three icon controls** | Inputs, Network and Settings; names and connection details remain available to accessibility services. |
 | **A greeting, a thin clock and the date** | In [Outfit](https://fonts.google.com/specimen/Outfit), and a matching Clock screensaver. Set `show_stats` in config or a theme for one line under the clock: CPU, free memory and free storage. It stays off unless you turn it on, and it refreshes only while Home is on screen. |
 | **Themes and module cards** | Themes change colours, wallpaper, dock and columns without a rebuild, and module cards let other apps plug a tile in, only with your say-so. |
 
@@ -83,8 +85,8 @@ phoning home, no apps you never asked for.
 | *Top shelf and ambient glow* | *Inputs: HDMI with connection state, AV, Live TV* |
 | ![The grid with the glass highlight on a tile and its name beneath](docs/focus-1-fancode.png) | ![The Clock screensaver: a thin clock drifting over the glow](docs/clock-screensaver.png) |
 | *The grid, one glass highlight, the tile's name* | *Clock screensaver, drifts so nothing burns in* |
-| ![The aurora theme: a wallpaper and tinted pills, pushed without a rebuild](themes/aurora/screenshot.jpg) | ![Six columns and a six-app dock from a theme's config.json](themes/six-columns/screenshot.jpg) |
-| *Aurora theme, pushed with `tools/theme.sh`* | *Six columns and a six-app dock, same launcher* |
+| ![The aurora theme: a wallpaper and tinted pills, pushed without a rebuild](themes/aurora/screenshot.jpg) | ![Upstream six-column theme reference (the premium dock stays at four apps)](themes/six-columns/screenshot.jpg) |
+| *Aurora theme, pushed with `tools/theme.sh`* | *Upstream reference screenshot; premium grid columns are independent of its four-app dock* |
 
 ## Supported TVs
 
@@ -358,7 +360,6 @@ tools/theme.sh themes/aurora                                 # push a theme; --r
 | [`tools/check.py`](tools/check.py) | Compares the TV with the list that was applied, for what a firmware update undid; `--fix` puts it back. |
 | [`tools/privacy.py`](tools/privacy.py) | Audits the TV for voice, ACR and telemetry candidates and prints the evidence for each; `--write` turns the findings into a list `disable.sh` and `restore.sh` already understand. |
 | [`tools/theme.sh`](tools/theme.sh) | Push a folder from [`themes/`](themes/) to the launcher and restart Home. |
-| [`tools/race_calendar.py`](tools/race_calendar.py) | Writes this season's F1 calendar into a theme for race-weekend mode, from the free Jolpica API. |
 | [`launcher/build-and-install.sh`](launcher/build-and-install.sh) | Builds a shrunk release (about 445 KB), installs it, switches Home, and rolls back if Home does not land on it. |
 
 The scripts never leave the TV without a Home app: they only disable a stock launcher they recognise,
@@ -443,7 +444,7 @@ The **TV** needs Android 8.0 (API 26) or newer: `minSdk` is a compile-time floor
 | **Settings on the TV** | Hold OK on the Settings pill for Launcher settings: tiles per row, animations, advanced effects |
 | **Themes** | Background, wallpaper and layout from a `config.json` pushed over Wi-Fi, no rebuild. Five ship in [`themes/`](themes/) |
 | **24 languages** | Follows the TV's language, with a fully mirrored right-to-left layout for Hebrew |
-| **App library** | Optional: browse every installed app and add or remove Home shortcuts. See [the app library guide](docs/app-library.md) |
+| **App library** | Use the optional app-sized Library tile directly below the dock, or press Down from the final Home row, for a full-screen alphabetical banner grid. OK opens an app; hold OK or press Menu for Home and visibility choices. See [the app library guide](docs/app-library.md) |
 | **Module cards** | Any TV app can offer its own tile; you approve each one once. See [`docs/modules.md`](docs/modules.md) |
 | **Add-ons** | Optional apps that plug in as module cards, kept in [`addons/`](addons/) and never built into the launcher |
 | **Clock screensaver** | A drifting clock over the glow, so nothing burns in |
@@ -471,10 +472,11 @@ and a wallpaper.
 <details>
 <summary><b>Launcher settings and the default home</b></summary>
 
-- Click **Settings** for the TV's own settings. Hold OK on it and choose **Launcher settings** to set 4, 5,
-  6 or 7 apps per row, turn animations on or off, and opt into advanced effects (tile lift, icon zoom and
-  smooth ambient-colour transitions; they may use more memory).
-- **Follow theme** clears the on-TV choices. Pushing or resetting a theme clears them too.
+- Click the **Settings** icon for the TV's settings. Hold OK and choose **Launcher settings**.
+- **Layout:** 4–7 apps per ordinary row, 0–3 rows visible below the four-app dock, and an optional App Library shortcut (hidden by default).
+- **Appearance:** choose a supplied local wallpaper. **Motion:** animations and opt-in advanced effects.
+- **System:** use theme defaults, choose the default Home or open TV settings. Left returns to the category sidebar; Right enters its controls. OK selects a segment or toggles a switch.
+- **Use theme defaults** clears on-TV overrides. An explicit theme push/reset also clears those overrides; an APK upgrade preserves them and the theme files.
 - **Change the default home:** Launcher settings and the optional Default-home tile
   (`show_home_settings_shortcut`) open Android's home picker. Choose the original launcher to stop using
   CleanYourTV as Home, or CleanYourTV to return. The original launcher must be enabled; if the install

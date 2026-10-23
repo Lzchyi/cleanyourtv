@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="premium_background">#F010141C</color>
+    <color name="premium_surface">#DE1B2330</color>
+    <color name="premium_focus">#79B9FF</color>
+    <color name="premium_text">#F5F7FC</color>
+    <color name="premium_muted">#AEB9CB</color>
+    <dimen name="premium_corner_radius">16dp</dimen>
+    <dimen name="premium_control_height">44dp</dimen>
+    <dimen name="premium_focus_stroke">2dp</dimen>
+    <dimen name="premium_spacing">12dp</dimen>
+    <integer name="premium_motion_ms">180</integer>
+</resources>

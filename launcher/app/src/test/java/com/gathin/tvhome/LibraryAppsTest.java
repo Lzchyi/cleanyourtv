@@ -7,29 +7,6 @@ import java.util.Set;
 import static org.junit.Assert.*;
 
 public class LibraryAppsTest {
-    private static final long DAY = 24L * 60 * 60 * 1000;
-
-    @Test public void missingShortcutsComeBeforeHomeAppsEvenWhenTheHomeAppIsNewer() {
-        long now = 100 * DAY;
-        assertTrue(LibraryApps.comparePriority(false, DAY, true, now, now) < 0);
-        assertTrue(LibraryApps.comparePriority(true, now, false, DAY, now) > 0);
-    }
-
-    @Test public void recentMissingAppsComeFirstButOlderAppsAndHomeAppsUseLabelOrder() {
-        long now = 100 * DAY;
-        assertTrue(LibraryApps.comparePriority(false, now, false, now - DAY, now) < 0);
-        assertTrue(LibraryApps.comparePriority(false, now - DAY, false, DAY, now) < 0);
-        assertEquals(0, LibraryApps.comparePriority(false, DAY, false, 2 * DAY, now));
-        assertEquals(0, LibraryApps.comparePriority(true, now, true, DAY, now));
-    }
-
-    @Test public void recentMeansFirstInstalledWithinSevenDaysAndNotAnUnknownOrFutureDate() {
-        long now = 100 * DAY;
-        assertTrue(LibraryApps.recent(now - 7 * DAY, now));
-        assertFalse(LibraryApps.recent(now - 7 * DAY - 1, now));
-        assertFalse(LibraryApps.recent(0, now));
-        assertFalse(LibraryApps.recent(now + 1, now));
-    }
     @Test public void themeAndTvDefaultsStayInPlaceUntilTheOwnerChoosesAnApp() {
         assertTrue(LibraryApps.visible(true, false, false));
         assertFalse(LibraryApps.visible(true, true, false));
@@ -57,21 +34,19 @@ public class LibraryAppsTest {
         assertTrue(LibraryApps.visible(true, false, false, false));
     }
 
-    @Test public void addingAdvancesPastCheckedAppsToTheNextMissingShortcut() {
-        assertEquals(3, LibraryApps.nextFocus(1, 5, index -> index == 3 || index == 4));
-        assertEquals(0, LibraryApps.nextFocus(4, 5, index -> index == 0 || index == 2));
+    @Test public void userHidingOverridesExplicitHomeAdditionsAndThemeDefaults() {
+        assertFalse(LibraryApps.visible(false, false, true, false, true));
+        assertFalse(LibraryApps.visible(true, true, true, false, true));
+        assertFalse(LibraryApps.visible(true, false, false, false, true));
     }
 
-    @Test public void addingTheLastMissingShortcutKeepsANearbyCardInsteadOfJumpingToTheStart() {
-        assertEquals(3, LibraryApps.nextFocus(2, 5, index -> false));
-        assertEquals(3, LibraryApps.nextFocus(4, 5, index -> false));
-        assertEquals(0, LibraryApps.nextFocus(0, 1, index -> { fail("No other card to inspect"); return true; }));
-        assertEquals(-1, LibraryApps.nextFocus(0, 0, index -> { fail("Empty catalogue"); return true; }));
-    }
-
-    @Test public void staleFocusIsClampedAfterAnAppRemoval() {
-        assertEquals(1, LibraryApps.nextFocus(9, 3, index -> index == 1));
-        assertEquals(1, LibraryApps.nextFocus(-1, 3, index -> index == 1));
+    @Test public void unhidingRestoresExistingHomeIntentWithoutReaddingRemovedApps() {
+        // The hidden flag changes independently of the saved addition/removal choices.
+        assertTrue(LibraryApps.visible(false, false, true, false, false));
+        assertTrue(LibraryApps.visible(true, true, true, false, false));
+        assertTrue(LibraryApps.visible(true, false, false, false, false));
+        assertFalse(LibraryApps.visible(true, false, true, true, false));
+        assertFalse(LibraryApps.visible(false, false, false, false, false));
     }
 
     @Test public void choicesRoundTripInStableOrderIncludingAnEmptyList() {

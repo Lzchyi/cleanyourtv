@@ -37,11 +37,11 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
         this.dockSize = dockSize;
         this.density = density;
         this.namesRoom = names ? 22 * density : 0;
-        this.lightGlass = lightGlass;
-        band.setColor(translucent ? 0x8C121014 : (Math.round(opacity * 2.55f) << 24) | 0x141416);
+        this.lightGlass = true;
+        band.setColor((Math.round(Math.min(70, opacity) * 2.55f) << 24) | 0x141416);
         edge.setStyle(Paint.Style.STROKE);
         edge.setStrokeWidth(density);
-        edge.setColor(lightGlass ? 0x38FFFFFF : translucent ? 0x26FFFFFF : 0x1FFFFFFF);
+        edge.setColor(0x32FFFFFF);
     }
 
     @Override
@@ -61,6 +61,7 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
             View child = parent.getChildAt(i);
             int pos = parent.getChildAdapterPosition(child);
             if (pos < 0 || pos >= dockSize) continue;
+            if (parent.getAdapter() instanceof AppAdapter && ((AppAdapter) parent.getAdapter()).isLibraryAt(pos)) continue;
             RecyclerView.ViewHolder vh = parent.getChildViewHolder(child);
             View card = vh instanceof AppAdapter.Holder ? ((AppAdapter.Holder) vh).card : child.findViewById(R.id.card);
             if (card == null) continue;
@@ -77,19 +78,17 @@ public class DockDecoration extends RecyclerView.ItemDecoration {
         }
         if (!any) return;
         float pad = 14 * density;
-        // The band can only draw inside the grid, and the first and last dock tiles sit 12dp in from its
-        // edges: a full 14dp at the sides sliced the rounded ends flat (#454). Keep the sides, with the
-        // 1dp edge line, inside the grid; the top and bottom have room.
-        // 22dp at the sides (the grid's 10dp padding makes room): a focused first or last tile grows about 7dp
-        // outwards and still keeps about the band's top margin from its rounded end.
-        float sidePad = 22 * density;
-        float side = Math.max(0f, Math.min(sidePad, Math.min(rect.left, parent.getWidth() - rect.right) - density));
-        rect.inset(-side, -pad);
+        // A full-width band gives four evenly distributed tiles balanced outer margins. The grid's
+        // 10dp side padding keeps its rounded edge and the first/last tile's small focus zoom visible.
+        rect.left = density;
+        rect.right = parent.getWidth() - density;
+        rect.top -= pad;
+        rect.bottom += pad;
         rect.bottom += namesRoom;
         float radius = 26 * density;
         if (lightGlass && (rect.top != shaderTop || rect.bottom != shaderBottom)) {
             // The pills' glass (pill_bg: white, 18% fading to 8%), a little fainter over this much larger area.
-            band.setShader(new LinearGradient(0, rect.top, 0, rect.bottom, 0x24FFFFFF, 0x0DFFFFFF,
+            band.setShader(new LinearGradient(0, rect.top, 0, rect.bottom, 0x38292B32, 0x8820242C,
                     Shader.TileMode.CLAMP));
             shaderTop = rect.top;
             shaderBottom = rect.bottom;

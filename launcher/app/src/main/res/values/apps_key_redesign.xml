@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Opt in only when the physical Apps key is consumed by firmware. Requires enabling the existing
+         HomeKeyService. Other keys pass through; normal Home/Settings mappings are bypassed in this mode. -->
+    <bool name="apps_key_library">false</bool>
+</resources>

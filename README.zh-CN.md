@@ -1,3 +1,5 @@
+> 本分支已升级为 Premium v2.6.0；新版应用库、导航和设置说明请参阅[英文升级指南](docs/premium-redesign.md)。下文保留上游介绍。
+
 <p align="center">
   <a href="https://cleanyour.tv"><img src="docs/banner.png" alt="CleanYourTV：让电视桌面回归简洁" width="800"></a>
 </p>

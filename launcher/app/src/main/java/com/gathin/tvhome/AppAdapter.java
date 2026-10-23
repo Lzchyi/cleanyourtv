@@ -24,7 +24,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.animation.DecelerateInterpolator;
-import android.view.animation.OvershootInterpolator;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -42,7 +41,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * App tiles. The first {@link MainActivity#COLUMNS} positions are the pinned dock (favourites, fixed order,
+ * App tiles. The first four positions are the pinned dock (favourites, fixed order,
  * then empty slots up to a full row, see {@link DockSlots}), then the module cards the owner chose to show
  * (by label), the rest is alphabetical.
  */
@@ -55,12 +54,10 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         boolean onTileVerticalKey(int position, int keyCode);
 
         void onLibraryRequested();
-        void onLibraryFocused();
-        void onLibraryUp();
     }
 
     static final class Entry {
-        static final int APP = 0, HOME_SETTINGS = 1, CARD = 2, EMPTY = 3;
+        static final int APP = 0, HOME_SETTINGS = 1, CARD = 2, EMPTY = 3, LIBRARY = 4;
 
         final int kind;
         final String label;
@@ -89,7 +86,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         }
     }
 
-    static final float FOCUS_SCALE = 1.10f;
+    static final float FOCUS_SCALE = 1.05f;
     /** Design size of a tile (dp); tiles shrink from here when the columns don't fit, see tileWidthPx. */
     static final float DESIGN_W_DP = 180f, DESIGN_H_DP = 101f;
 
@@ -133,8 +130,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     static final float DOCK_EXTRA_DP = 6 + 12;
     /** Room kept under the last row rows_below_dock asks for (MainActivity places the dock with the same). */
     static final float BOTTOM_ROOM_DP = 30;
-    /** Room kept above the dock for the dock title (48sp hero name plus its 40dp gap) when dock_title is on. */
-    static final float TITLE_ROOM_DP = 104;
+    /** Room above the dock for its compact 30sp title and 40dp separation when dock_title is on. */
+    static final float TITLE_ROOM_DP = 86;
     /** dock_row false: room above the first row for its zoom and glass (MainActivity places the grid with it). */
     static final float TOP_ROOM_DP = 12;
 
@@ -174,6 +171,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private boolean reordering;
     private final TileListener listener;
     private final int dockSize;
+    private final int gridColumns;
     /** config dock_row: false makes the dock apps the first tiles of one plain grid (names shown, no empty slots). */
     private final boolean dockRow;
     /** config always_show_names: the alpha of an unfocused tile's name (0 hides it). */
@@ -196,8 +194,6 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private final boolean showHomeSettings;
     /** Calmer motion for weak GPUs (config.xml, reduced_motion): no overshoot, shorter fades. */
     private final boolean reducedMotion;
-    /** The focus zoom may overshoot (config.xml, focus_overshoot). */
-    private final boolean focusOvershoot;
     /** Package to the action its tile sends instead of the start screen (config.xml, launch_actions). */
     private final Map<String, String> launchActions;
     /** Tile names and bundled banners that replace the app's own (config.xml, app_labels and app_banners). */
@@ -207,17 +203,17 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     AppAdapter(Context ctx, TileListener listener, int dockSize, Config cfg) {
         this.ctx = ctx;
         this.listener = listener;
-        this.dockSize = dockSize;
+        this.dockSize = HomeGeometry.DOCK_CAPACITY;
+        this.gridColumns = cfg.columns;
         this.favourites = cfg.dockApps;
         this.fillDock = cfg.fillDock;
         this.hidden = new HashSet<>(cfg.hiddenApps);
         this.animations = cfg.animations;
         this.advancedEffects = cfg.animations && cfg.advancedEffects;
         this.showHomeSettings = cfg.showHomeSettingsShortcut;
-        this.showLibrary = cfg.appLibrary;
+        this.showLibrary = cfg.showLibraryShortcut;
         this.reducedMotion = cfg.reducedMotion;
-        this.focusOvershoot = cfg.focusOvershoot;
-        this.rowsBelowDock = cfg.rowsBelowDock;
+        this.rowsBelowDock = HomeGeometry.initialVisibleRows(cfg.rowsBelowDock, cfg.showLibraryShortcut);
         this.dockTitle = cfg.dockTitle;
         this.dockRow = cfg.dockRow;
         this.restNameAlpha = cfg.alwaysShowNames ? 0.75f : 0f;
@@ -244,6 +240,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         leanbackPackages = tvPackages;
         Set<String> added = LibraryApps.load(ctx);
         Set<String> removed = LibraryApps.loadRemoved(ctx);
+        Set<String> userHidden = LibraryApps.loadHidden(ctx);
         if (!added.isEmpty()) {
             Set<String> seen = new HashSet<>(tvPackages);
             for (ResolveInfo ri : pm.queryIntentActivities(
@@ -262,7 +259,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             if (ri.activityInfo == null) continue;
             String pkg = ri.activityInfo.packageName;
             if (pkg.equals(ctx.getPackageName()) || !ri.activityInfo.exported
-                    || !LibraryApps.visible(tvPackages.contains(pkg), hidden.contains(pkg), added.contains(pkg), removed.contains(pkg))) continue;
+                    || !LibraryApps.visible(tvPackages.contains(pkg), hidden.contains(pkg), added.contains(pkg), removed.contains(pkg), userHidden.contains(pkg))) continue;
             ComponentName component = new ComponentName(pkg, ri.activityInfo.name);
             Cards.Card card = cardByPkg.get(pkg);
             if (card != null && !card.component.equals(component)) continue;   // the card stands in for this tile
@@ -305,11 +302,23 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                     ctx.getDrawable(R.drawable.ic_home_settings), null, 0));
         }
         docked = 0;
-        while (docked < fresh.size() && isDocked(fresh.get(docked))) docked++;
+        while (docked < Math.min(dockSize, fresh.size()) && isDocked(fresh.get(docked))) docked++;
         emptySlots = dockRow && !reordering ? DockSlots.empty(docked, dockSize, fresh.size(), fillDock) : 0;
         for (int i = 0; i < emptySlots; i++) {
             fresh.add(docked + i, new Entry(Entry.EMPTY, "", new ComponentName(ctx, "empty-dock-slot-" + i),
                     null, null, null, 0));
+        }
+        if (showLibrary && !reordering) {
+            int padding = HomeGeometry.shortcutPadding(fresh.size(), dockRow);
+            if (padding > 0) {
+                docked = fresh.size();
+                emptySlots = padding;
+                for (int i = 0; i < padding; i++) fresh.add(new Entry(Entry.EMPTY, "",
+                        new ComponentName(ctx, "empty-shortcut-dock-slot-" + i), null, null, null, 0));
+            }
+            int position = HomeGeometry.shortcutPosition(fresh.size(), dockRow);
+            fresh.add(position, new Entry(Entry.LIBRARY, ctx.getString(R.string.app_library),
+                    new ComponentName(ctx, "app-library"), null, ctx.getDrawable(R.drawable.ic_apps), null, 0));
         }
         items.clear();
         items.addAll(fresh);
@@ -358,24 +367,12 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     @NonNull
     @Override
     public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        if (viewType == 1) {
-            View row = LayoutInflater.from(ctx).inflate(R.layout.row_app_library, parent, false);
-            View button = row.findViewById(R.id.btnLibrary);
-            button.setOnClickListener(v -> listener.onLibraryRequested());
-            button.setOnFocusChangeListener((v, focused) -> { if (focused) listener.onLibraryFocused(); });
-            button.setOnKeyListener((v, key, event) -> {
-                if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-                if (key == KeyEvent.KEYCODE_DPAD_UP) listener.onLibraryUp();
-                return key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN
-                        || key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT;
-            });
-            return new RecyclerView.ViewHolder(row) { };
-        }
         View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_app, parent, false);
         float density = parent.getResources().getDisplayMetrics().density;
         int width = parent.getWidth() > 0 ? parent.getWidth() : parent.getMeasuredWidth();
         int inner = width - parent.getPaddingLeft() - parent.getPaddingRight();
-        int w = tileWidthPx(inner, parent.getHeight(), dockSize, rowsBelowDock, dockTitle, dockRow, density), h = tileHeightPx(w);
+        int columns = viewType == 2 ? dockSize : gridColumns;
+        int w = tileWidthPx(inner, parent.getHeight(), columns, rowsBelowDock, dockTitle, dockRow, density), h = tileHeightPx(w);
         View card = v.findViewById(R.id.card);
         ViewGroup.LayoutParams cardLp = card.getLayoutParams();
         cardLp.width = w;
@@ -392,12 +389,11 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             v.setPadding(v.getPaddingLeft(), pad, v.getPaddingRight(), pad);
         }
         name.setLayoutParams(nameLp);
-        return new Holder(v, listener, animations, advancedEffects, reducedMotion, restNameAlpha, focusOvershoot);
+        return new Holder(v, listener, animations, advancedEffects, reducedMotion, restNameAlpha);
     }
 
     @Override
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-        if (isLibraryAt(position)) return;
         Holder h = (Holder) holder;
         Entry e = items.get(position);
         if (e.kind == Entry.EMPTY) {
@@ -414,6 +410,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         h.card.setVisibility(View.VISIBLE);
         h.card.setFocusable(true);
         h.name.setText(e.name);
+        h.card.setContentDescription(e.name);
         // The dock has no labels, unless always_show_names asks for them (DockDecoration then makes room in the band).
         h.name.setVisibility(dockRow && position < dockSize && restNameAlpha == 0f ? View.INVISIBLE : View.VISIBLE);
         boolean focused = h.card.isFocused();   // a rebind after reload() can hit the focused tile
@@ -422,8 +419,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         h.card.setScaleY(focused && animations ? focusScale() : 1f);
         h.card.setTranslationY(focused && advancedEffects ? -4f * ctx.getResources().getDisplayMetrics().density : 0f);
         h.card.setTranslationZ(focused && advancedEffects ? 8f * ctx.getResources().getDisplayMetrics().density : 0f);
-        h.banner.setScaleX(focused && advancedEffects ? 1.035f : 1f);
-        h.banner.setScaleY(focused && advancedEffects ? 1.035f : 1f);
+        h.banner.setScaleX(1f);
+        h.banner.setScaleY(1f);
         // A fully opaque banner covers the whole card (centerCrop), so the card's own fill under it is drawn for
         // nothing on every frame; keep it under banners with transparent parts and under icon tiles.
         h.card.setBackground(e.banner != null && e.banner.getOpacity() == PixelFormat.OPAQUE ? null : h.cardBackground);
@@ -440,8 +437,12 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             h.label.setText(e.label);
             h.label.setVisibility(View.VISIBLE);
         }
-        h.card.setOnClickListener(v -> launch(e));
+        h.card.setOnClickListener(v -> {
+            if (e.kind == Entry.LIBRARY) listener.onLibraryRequested();
+            else launch(e);
+        });
         h.card.setOnLongClickListener(v -> {
+            if (e.kind == Entry.LIBRARY) return false;
             Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + e.pkg));
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             try {
@@ -484,14 +485,23 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     @Override
     public int getItemCount() {
-        return items.size() + (showLibrary ? 1 : 0);
+        return items.size();
     }
 
     int appCount() { return items.size(); }
 
-    boolean isLibraryAt(int position) { return showLibrary && position == items.size(); }
+    boolean isLibraryAt(int position) {
+        return position >= 0 && position < items.size() && items.get(position).kind == Entry.LIBRARY;
+    }
+    int libraryPosition() {
+        for (int i = 0; i < items.size(); i++) if (isLibraryAt(i)) return i;
+        return -1;
+    }
+    boolean libraryShortcutEnabled() { return showLibrary; }
 
-    @Override public int getItemViewType(int position) { return isLibraryAt(position) ? 1 : 0; }
+    @Override public int getItemViewType(int position) {
+        return isLibraryAt(position) ? 1 : dockRow && position < dockSize ? 2 : 0;
+    }
 
     boolean containsPackage(String pkg) {
         for (Entry entry : items) if (entry.pkg.equals(pkg)) return true;
@@ -530,16 +540,17 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     /** Tiles that can be moved: everything but the "Default home" tile, which always stays last. */
     int movableCount() {
-        int n = items.size();
-        return n > 0 && items.get(n - 1).kind == Entry.HOME_SETTINGS ? n - 1 : n;
+        int count = 0;
+        for (Entry entry : items) if (entry.kind == Entry.APP || entry.kind == Entry.CARD) count++;
+        return count;
     }
 
     /** Keys of the movable tiles in their current order, for Order (empty dock slots are not tiles). */
     List<String> movableKeys() {
         List<String> keys = new ArrayList<>();
-        for (int i = 0; i < movableCount(); i++) {
-            Entry e = items.get(i);
-            if (e.kind != Entry.EMPTY) keys.add(e.component.flattenToShortString());
+        for (Entry e : items) {
+            if (e.kind != Entry.EMPTY && e.kind != Entry.LIBRARY && e.kind != Entry.HOME_SETTINGS)
+                keys.add(e.component.flattenToShortString());
         }
         return keys;
     }
@@ -572,7 +583,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 
     /** Dock slots that hold an app: the whole dock unless some slots are empty. */
     int dockFilled() {
-        return emptySlots > 0 ? docked : dockSize;
+        return Math.min(items.size(), emptySlots > 0 ? docked : dockSize);
     }
 
     /** A position focus can land on: an empty dock slot gives the last dock app. */
@@ -596,7 +607,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     }
 
     float focusScale() {
-        return !animations ? 1f : advancedEffects ? 1.12f : 1.10f;
+        return !animations ? 1f : FOCUS_SCALE;
     }
 
     /** A vivid colour sampled from the app's banner (or icon), cached per entry; a card's accent when it set one. */
@@ -670,10 +681,9 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         final boolean reducedMotion;
         /** Alpha of the name while the tile is not focused (always_show_names). */
         final float restNameAlpha;
-        final boolean overshoot;
 
         Holder(View v, TileListener listener, boolean animations, boolean advancedEffects,
-               boolean reducedMotion, float restNameAlpha, boolean overshoot) {
+               boolean reducedMotion, float restNameAlpha) {
             super(v);
             card = v.findViewById(R.id.card);
             cardBackground = card.getBackground();
@@ -685,7 +695,6 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             this.advancedEffects = advancedEffects;
             this.reducedMotion = reducedMotion;
             this.restNameAlpha = restNameAlpha;
-            this.overshoot = overshoot;
 
             final float density = v.getResources().getDisplayMetrics().density;
             card.setOutlineProvider(new ViewOutlineProvider() {
@@ -709,7 +718,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                 view.animate().cancel();
                 banner.animate().cancel();
                 name.animate().cancel();
-                float scale = !animations ? 1f : advancedEffects ? 1.12f : 1.10f;
+                float scale = !animations ? 1f : FOCUS_SCALE;
                 float s = focused ? scale : 1f;
                 if (!animations) {
                     view.setScaleX(1f);
@@ -738,17 +747,16 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                     view.animate().scaleX(s).scaleY(s)
                             .translationY(focused && advancedEffects ? -4f * density : 0f)
                             .translationZ(focused && advancedEffects ? 8f * density : 0f)
-                            .setDuration(advancedEffects ? (focused ? 220 : 170) : (focused ? 260 : 180))
-                            .setInterpolator(focused && !overshoot ? new DecelerateInterpolator(1.5f)
-                                    : new OvershootInterpolator(focused ? (advancedEffects ? 0.7f : 1.6f) : 0f))
+                            .setDuration(focused ? 180 : 150)
+                            .setInterpolator(new DecelerateInterpolator(1.5f))
                             .withLayer().start();
                     if (advancedEffects) {
-                        banner.animate().scaleX(focused ? 1.035f : 1f).scaleY(focused ? 1.035f : 1f)
-                                .setDuration(280).start();
+                        banner.setScaleX(1f);
+                        banner.setScaleY(1f);
                     }
                     name.animate().alpha(focused ? 1f : restNameAlpha)
                             .translationY(focused ? density * 4f : -density * 6f)
-                            .setDuration(220).start();
+                            .setDuration(160).start();
                 }
                 int pos = getBindingAdapterPosition();
                 if (focused && listener != null && pos != RecyclerView.NO_POSITION) {

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item type="id" name="libraryArtwork" />
+    <string name="library_hide_app">Hide app</string>
+    <string name="library_unhide_app">Unhide app</string>
+    <string name="library_hidden_filter">Hidden apps (%1$d)</string>
+    <string name="library_all_apps">All apps</string>
+    <string name="library_hidden_empty">No hidden apps</string>
+    <string name="library_hidden_description">%1$s, hidden</string>
+</resources>

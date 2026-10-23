@@ -1,121 +1,221 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF101419"
-    android:fillViewport="true">
+    android:background="@color/premium_background"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:orientation="vertical"
+    android:paddingStart="48dp"
+    android:paddingEnd="48dp"
+    android:paddingTop="30dp"
+    android:paddingBottom="30dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/outfit_medium"
+        android:text="@string/launcher_settings"
+        android:textColor="@color/premium_text"
+        android:textSize="28sp" />
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingStart="72dp"
-        android:paddingEnd="72dp"
-        android:paddingTop="38dp"
-        android:paddingBottom="38dp">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/launcher_settings"
-            android:textColor="#FFFFFFFF"
-            android:textSize="34sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="28dp"
-            android:text="@string/columns_label"
-            android:textColor="#FFFFFFFF"
-            android:textSize="20sp" />
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="26dp"
+        android:baselineAligned="false"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:orientation="horizontal">
 
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:orientation="horizontal">
+            android:layout_width="190dp"
+            android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="vertical"
+            android:padding="6dp">
 
-            <TextView android:id="@+id/columns4" style="@style/SettingsColumnChoice" android:text="4" />
-            <TextView android:id="@+id/columns5" style="@style/SettingsColumnChoice" android:text="5" />
-            <TextView android:id="@+id/columns6" style="@style/SettingsColumnChoice" android:text="6" />
-            <TextView android:id="@+id/columns7" style="@style/SettingsColumnChoice" android:text="7" />
+            <TextView
+                android:id="@+id/settingsCategoryLayout"
+                style="@style/RedesignSettingsCategory"
+                android:drawableStart="@drawable/ic_apps"
+                android:text="@string/settings_category_layout" />
+
+            <TextView
+                android:id="@+id/settingsCategoryAppearance"
+                style="@style/RedesignSettingsCategory"
+                android:drawableStart="@drawable/ic_picture"
+                android:text="@string/settings_category_appearance" />
+
+            <TextView
+                android:id="@+id/settingsCategoryMotion"
+                style="@style/RedesignSettingsCategory"
+                android:drawableStart="@drawable/ic_settings_motion"
+                android:text="@string/settings_category_motion" />
+
+            <TextView
+                android:id="@+id/settingsCategorySystem"
+                style="@style/RedesignSettingsCategory"
+                android:drawableStart="@drawable/ic_settings"
+                android:text="@string/settings_category_system" />
         </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="@string/rows_below_dock_label"
-            android:textColor="#FFFFFFFF"
-            android:textSize="20sp" />
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="24dp"
+            android:layout_marginEnd="28dp"
+            android:background="#20FFFFFF" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:orientation="horizontal">
+        <ScrollView
+            android:id="@+id/settingsContentScroll"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:focusable="false"
+            android:padding="6dp"
+            android:scrollbars="none">
 
-            <TextView android:id="@+id/rows0" style="@style/SettingsColumnChoice" android:text="0" />
-            <TextView android:id="@+id/rows1" style="@style/SettingsColumnChoice" android:text="1" />
-            <TextView android:id="@+id/rows2" style="@style/SettingsColumnChoice" android:text="2" />
-            <TextView android:id="@+id/rows3" style="@style/SettingsColumnChoice" android:text="3" />
-        </LinearLayout>
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipChildren="false"
+                android:clipToPadding="false">
 
-        <TextView
-            android:id="@+id/wallpaperChoice"
-            style="@style/SettingsRow"
-            android:layout_marginTop="28dp" />
+                <LinearLayout
+                    android:id="@+id/settingsPaneLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/animationsChoice"
-            style="@style/SettingsRow"
-            android:layout_marginTop="28dp" />
+                    <TextView
+                        style="@style/RedesignSettingsLabel"
+                        android:text="@string/columns_label" />
 
-        <TextView
-            android:id="@+id/advancedChoice"
-            style="@style/SettingsRow"
-            android:layout_marginTop="10dp" />
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/settings_segment_group"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:orientation="horizontal"
+                        android:padding="3dp">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/advanced_effects_warning"
-            android:textColor="#FFACB8C1"
-            android:textSize="14sp" />
+                        <TextView android:id="@+id/columns4" style="@style/RedesignSettingsSegment" android:text="4" />
+                        <TextView android:id="@+id/columns5" style="@style/RedesignSettingsSegment" android:text="5" />
+                        <TextView android:id="@+id/columns6" style="@style/RedesignSettingsSegment" android:text="6" />
+                        <TextView android:id="@+id/columns7" style="@style/RedesignSettingsSegment" android:text="7" />
+                    </LinearLayout>
 
-        <TextView
-            android:id="@+id/followThemeChoice"
-            style="@style/SettingsRow"
-            android:layout_marginTop="18dp"
-            android:text="@string/follow_theme" />
+                    <TextView
+                        style="@style/RedesignSettingsLabel"
+                        android:layout_marginTop="26dp"
+                        android:text="@string/rows_below_dock_label" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="7dp"
-            android:text="@string/follow_theme_hint"
-            android:textColor="#FFACB8C1"
-            android:textSize="14sp" />
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/settings_segment_group"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:orientation="horizontal"
+                        android:padding="3dp">
 
-        <TextView
-            android:id="@+id/defaultHomeChoice"
-            style="@style/SettingsRow"
-            android:layout_marginTop="28dp"
-            android:text="@string/home_settings" />
+                        <TextView android:id="@+id/rows0" style="@style/RedesignSettingsSegment" android:text="0" />
+                        <TextView android:id="@+id/rows1" style="@style/RedesignSettingsSegment" android:text="1" />
+                        <TextView android:id="@+id/rows2" style="@style/RedesignSettingsSegment" android:text="2" />
+                        <TextView android:id="@+id/rows3" style="@style/RedesignSettingsSegment" android:text="3" />
+                    </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="7dp"
-            android:text="@string/home_settings_help"
-            android:textColor="#FFACB8C1"
-            android:textSize="14sp" />
+                    <Switch
+                        android:id="@+id/libraryShortcutChoice"
+                        style="@style/RedesignSettingsSwitch"
+                        android:layout_marginTop="26dp"
+                        android:text="@string/settings_library_shortcut" />
+                </LinearLayout>
 
-        <TextView
-            android:id="@+id/tvSettingsChoice"
-            style="@style/SettingsRow"
-            android:layout_marginTop="18dp"
-            android:text="@string/tv_settings" />
+                <LinearLayout
+                    android:id="@+id/settingsPaneAppearance"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/wallpaperChoice"
+                        style="@style/RedesignSettingsAction"
+                        android:drawableEnd="@drawable/ic_settings_chevron" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/settingsPaneMotion"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <Switch
+                        android:id="@+id/animationsChoice"
+                        style="@style/RedesignSettingsSwitch"
+                        android:text="@string/settings_animations_label" />
+
+                    <Switch
+                        android:id="@+id/advancedChoice"
+                        style="@style/RedesignSettingsSwitch"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/advanced_effects" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/settingsPaneSystem"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/followThemeChoice"
+                        style="@style/RedesignSettingsAction"
+                        android:text="@string/settings_follow_theme" />
+
+                    <TextView
+                        style="@style/RedesignSettingsHint"
+                        android:text="@string/follow_theme_hint" />
+
+                    <TextView
+                        android:id="@+id/defaultHomeChoice"
+                        style="@style/RedesignSettingsAction"
+                        android:layout_marginTop="20dp"
+                        android:drawableEnd="@drawable/ic_settings_chevron"
+                        android:text="@string/home_settings" />
+
+                    <TextView
+                        style="@style/RedesignSettingsHint"
+                        android:text="@string/home_settings_help" />
+
+                    <TextView
+                        android:id="@+id/tvSettingsChoice"
+                        style="@style/RedesignSettingsAction"
+                        android:layout_marginTop="20dp"
+                        android:drawableEnd="@drawable/ic_settings_chevron"
+                        android:text="@string/tv_settings" />
+                </LinearLayout>
+            </FrameLayout>
+        </ScrollView>
     </LinearLayout>
-</ScrollView>
+</LinearLayout>

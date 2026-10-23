@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_category_layout">Layout</string>
+    <string name="settings_category_appearance">Appearance</string>
+    <string name="settings_category_motion">Motion</string>
+    <string name="settings_category_system">System</string>
+    <string name="settings_animations_label">Animations</string>
+    <string name="settings_library_shortcut">Show App Library shortcut</string>
+    <string name="settings_follow_theme">Use theme defaults</string>
+
+    <style name="RedesignSettingsDialog" parent="android:Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/settings_dialog_bg</item>
+        <item name="android:colorAccent">@color/premium_focus</item>
+        <item name="android:textColor">@color/premium_text</item>
+        <item name="android:colorBackground">@color/premium_surface</item>
+        <item name="android:fontFamily">@font/outfit_regular</item>
+        <item name="android:windowMinWidthMajor">56%</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+
+    <style name="RedesignSettingsAction">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">@dimen/premium_control_height</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:background">@drawable/settings_choice_bg</item>
+        <item name="android:textColor">@color/premium_text</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:fontFamily">@font/outfit_regular</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:drawableTint">@color/premium_text</item>
+        <item name="android:drawablePadding">12dp</item>
+        <item name="android:focusable">true</item>
+        <item name="android:clickable">true</item>
+    </style>
+
+    <style name="RedesignSettingsCategory" parent="RedesignSettingsAction">
+        <item name="android:layout_marginBottom">10dp</item>
+        <item name="android:drawablePadding">12dp</item>
+    </style>
+
+    <style name="RedesignSettingsSegment" parent="RedesignSettingsAction">
+        <item name="android:layout_width">44dp</item>
+        <item name="android:layout_marginStart">1dp</item>
+        <item name="android:layout_marginEnd">1dp</item>
+        <item name="android:paddingStart">0dp</item>
+        <item name="android:paddingEnd">0dp</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <style name="RedesignSettingsSwitch" parent="RedesignSettingsAction">
+        <item name="android:showText">false</item>
+        <item name="android:switchMinWidth">44dp</item>
+        <item name="android:switchPadding">20dp</item>
+        <item name="android:thumbTint">@color/settings_switch_thumb</item>
+        <item name="android:trackTint">@color/settings_switch_track</item>
+    </style>
+
+    <style name="RedesignSettingsLabel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/premium_text</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:fontFamily">@font/outfit_medium</item>
+    </style>
+
+    <style name="RedesignSettingsHint">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:paddingStart">3dp</item>
+        <item name="android:paddingEnd">3dp</item>
+        <item name="android:textColor">@color/premium_muted</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:fontFamily">@font/outfit_regular</item>
+    </style>
+</resources>
