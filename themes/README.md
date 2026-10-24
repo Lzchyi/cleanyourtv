@@ -56,7 +56,7 @@ is ignored, and a file that doesn't parse is ignored as a whole, so a theme can 
 | `library_button` | bool | Legacy key. The premium top bar keeps Inputs, Network and Settings; use `library_shortcut` for an optional app-sized tile instead |
 | `always_show_names` | bool | Names under every tile, dimmed until focused, the dock included (its band grows to hold them); `false` by default shows only the focused tile's name |
 | `wallpaper_true_color` | bool | Decode wallpapers in 32-bit colour (8 MB at 1080p) instead of RGB_565 (4 MB), which bands dark gradients such as a night sky; for TVs with 2 GB or more (`false` by default) |
-| `app_library` | bool | Legacy key accepted for compatibility; the premium Library is always reachable with Down from the final row. Home/hidden-app choices survive theme changes; see [docs/app-library.md](../docs/app-library.md) |
+| `app_library` | bool | Legacy key accepted for compatibility; open the premium Library with its enabled tile or a supported Apps button. Home/hidden-app choices survive theme changes; see [docs/app-library.md](../docs/app-library.md) |
 | `library_shortcut` | bool | Optional app-sized Library tile in the first row below the dock, false by default. The on-TV Layout switch overrides it until an explicit theme push/reset |
 | `shamsi_date` | bool | Show the Solar Hijri date above the Gregorian one |
 | `greeting_name` | string | A name after the greeting, e.g. `"Mr. Trịnh"` for GOOD MORNING, MR. TRỊNH; empty for the greeting alone |

@@ -1,3 +1,5 @@
+> **Lzchyi's personal fork — Premium Minimal Home, build 16.** Based on [Gathin23/cleanyourtv v2.6.0](https://github.com/Gathin23/cleanyourtv/releases/tag/v2.6.0); this is a separate visual redesign, not stock v2.7.0. Tested on Sony KD-55X9000H / Android 12. [Screenshots](docs/screenshots/README.md) · [Changelog](CHANGELOG.md) · [Build and upgrade guide](docs/premium-redesign.md) · [Sony Apps companion](companions/sony-apps-layout/README.md). Upstream documentation follows below.
+
 <p align="center">
   <a href="https://cleanyour.tv"><img src="https://raw.githubusercontent.com/Gathin23/cleanyourtv/main/docs/banner.png" alt="CleanYourTV. Your TV, minus the ads. Strip the bloatware from any Android TV or Google TV over Wi-Fi and replace the ad-filled home screen with a clean launcher that looks like an Apple TV. No root, no cable, nothing uninstalled, and a one-line restore." width="800"></a>
 </p>
@@ -444,7 +446,7 @@ The **TV** needs Android 8.0 (API 26) or newer: `minSdk` is a compile-time floor
 | **Settings on the TV** | Hold OK on the Settings pill for Launcher settings: tiles per row, animations, advanced effects |
 | **Themes** | Background, wallpaper and layout from a `config.json` pushed over Wi-Fi, no rebuild. Five ship in [`themes/`](themes/) |
 | **24 languages** | Follows the TV's language, with a fully mirrored right-to-left layout for Hebrew |
-| **App library** | Use the optional app-sized Library tile directly below the dock, or press Down from the final Home row, for a full-screen alphabetical banner grid. OK opens an app; hold OK or press Menu for Home and visibility choices. See [the app library guide](docs/app-library.md) |
+| **App library** | Use the optional app-sized Library tile below the dock or the supported Apps button for a full-screen alphabetical banner grid. Down moves focus without opening the Library. OK opens an app; hold OK or press Menu for Home and visibility choices. See [the app library guide](docs/app-library.md) |
 | **Module cards** | Any TV app can offer its own tile; you approve each one once. See [`docs/modules.md`](docs/modules.md) |
 | **Add-ons** | Optional apps that plug in as module cards, kept in [`addons/`](addons/) and never built into the launcher |
 | **Clock screensaver** | A drifting clock over the glow, so nothing burns in |

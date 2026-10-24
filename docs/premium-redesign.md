@@ -1,6 +1,6 @@
 # Premium v2.6.0
 
-This personal fork is based on upstream's `v2.6.0` tag (`0bb7f7e`), with application version **2.6.0 / code 8**. It keeps the native Java views, RecyclerView, existing input/vendor handling and fast-return lifecycle. It adds no runtime dependency, Internet permission or new background service. Android 8/API 26 and later remain supported; hardware validation for this redesign is on one Sony KD-55X9000H running Android 12.
+This personal fork is based on upstream's `v2.6.0` tag (`0bb7f7e`), with application version **2.6.0 / code 16**. It keeps the native Java views, RecyclerView, existing input/vendor handling and fast-return lifecycle. It adds no runtime dependency, Internet permission or new background service. Android 8/API 26 and later remain supported; hardware validation for this redesign is on one Sony KD-55X9000H running Android 12.
 
 ## Home and navigation
 
@@ -8,9 +8,11 @@ The clock sits beside a compact greeting/date block. Inputs, Network and Setting
 
 Focus uses a restrained 1.05× scale. Header focus keeps the wallpaper sharp; dock and lower-row focus soften and dim it progressively. One worker generates a cache of at most 320×320 pixels per wallpaper; decoding that preview is capped at 204,800 pixels. Focus changes animate opacity rather than recompute blur. Allocation/decode failure falls back to dimming. Disabled animations settle immediately; reduced motion shortens or removes effects. Original wallpaper files remain local and unchanged.
 
-The optional **App Library tile** appears directly below the dock at the same size as other Home apps, including when visible rows is zero. Select it to open the full-screen, alphabetical Library: six landscape banner columns at Sony 1080p, adapting to narrower screens. Original app banners and icons remain unchanged. **Down from the final actual Home row** remains an alternative. OK opens an app. Hold OK, or press Menu, for relevant Open, Add/Remove Home, Hide/Unhide and App info actions. The Hidden apps view makes recovery available. Back restores the prior Home app and scroll position. Empty Home can enter the Library with Down from its top controls. Layout settings control the Library tile; it is hidden by default.
+The optional **App Library tile** defaults to the first pinned position below the dock and participates in saved app reordering. Its grouped-grid artwork contains no embedded text. It appears at the same size as other Home apps, with only a small next-row preview when visible rows is zero. Select it to open the full-screen, alphabetical Library: six landscape banner columns at Sony 1080p, adapting to narrower screens. Original app banners and icons remain unchanged. Down only moves focus; it never opens the Library. OK opens an app. Hold OK, or press Menu, for relevant Open, Add/Remove Home, Hide/Unhide and App info actions. The Hidden apps view makes recovery available. Back restores the prior Home app and scroll position. On empty Home, use the enabled Library tile or a supported Apps button. Layout settings control the Library tile; it is hidden by default.
 
-The launcher accepts Android’s `ACTION_ALL_APPS` activity request as well as a foreground `KEYCODE_ALL_APPS`. Some Android TV firmware sends the request only to a system launcher. For those sets, the existing `HomeKeyService` has an opt-in `apps_key_library` resource mode: only Apps opens the Library; Home/Settings mappings are bypassed and unrelated keys pass through. The Sony build opts in and recognizes the observed VRC 001 Apps scan only with its matching vendor/product identity. This reuses the existing key-only service, requests no screen-content events and adds no polling. It requires enabling that service; other remotes and firmware still need device verification. The visible tile works independently of remote compatibility.
+The launcher accepts Android's standard All Apps request, but the legacy accessibility Apps-key helper remains **disabled on this Sony** because its platform key-filter path breaks native held-volume repeat. Kernel capture records Volume press/release while the helper receives neither; a software timer cannot repair those missing callbacks.
+
+The separately installed [Sony Apps layout companion](../companions/sony-apps-layout/README.md) maps only the observed Apps scan/usage to an application-launch category. A default-off launcher alias opens Library directly, hides Home chrome immediately and suppresses the entry animation. The owner confirmed Apps from Home and another app, Back, held Volume and disappearance of the intermediate Home flash. The saved layout needs no resident watcher or accessibility filter. Restart/sleep/Bluetooth reconnect persistence remains untested; a keyboard's Calculator key shares the Library route while enabled. The on-screen tile works independently.
 
 ## Settings and preferences
 
@@ -41,3 +43,7 @@ For a TV whose compiled defaults differ from this source, put only those resourc
 Install an APK only after comparing its certificate to the installed app. Use an in-place `install -r`, without uninstalling or clearing app data, then verify Home ownership, settings, wallpaper and dock order. Keep a same-signer recovery artifact and the original Home component available during testing. Turn debugging off after the upgrade checks.
 
 Performance measurements, actual device checks and remaining limitations are recorded in the release report. A release is ready only when required host/CI checks pass and any unresolved device or performance limits are explicitly stated.
+
+## Screenshots and changes
+
+[Real-TV gallery](screenshots/README.md) · [Categorized changelog](../CHANGELOG.md). Screenshots were captured on the actual Sony during redesign validation; build 16 changes the input entry route without another visual redesign. No fresh runtime-performance claim is made.

@@ -1,17 +1,19 @@
 # App Library
 
 Enable **Show App Library shortcut** in Launcher settings for an app-sized
-Library tile directly below the dock, in the first regular Home row. It appears
-on the initial Home screen, rather than in a footer after every installed app.
-The optional tile is off by default; turning it off keeps saved choices.
+Library tile directly below the dock, in the first regular Home row. Select the
+tile and press OK to open the library. The optional tile is off by default;
+turning it off keeps saved choices. With **Visible rows = 0**, Home shows only a
+narrow preview of the row; moving focus down reveals the tile without reserving
+a full extra row.
 
-**Down from the final Home app row** is also available, including when the tile
-is hidden. With no Home apps, Down from a top control opens the library. Back
-returns to the previous Home focus and scroll position, with a nearby tile as
-fallback if an app has disappeared.
+Down moves focus between Home rows and stops at the final row. It does not open
+the library, including when Home is empty. Use the Library tile or a supported
+Apps-button action. Back returns to the previous Home focus and scroll position,
+with a nearby tile as fallback if an app has disappeared.
 
 The library fills the screen over the selected wallpaper. Its vertically
-scrolling landscape grid uses six columns on the Sony's typical 1080p layout,
+scrolling landscape grid uses six columns on a typical 1080p Sony X9000H layout,
 five on narrower layouts, and fewer when needed. Cards use each app's original
 TV banner, with its original icon as fallback, and compact labels underneath.
 Apps sort alphabetically by display name using the configured locale, with
@@ -41,8 +43,8 @@ An optional `apps_key_library` build setting reuses the existing
 button. This requires the service to be enabled in Android Accessibility; in
 this mode it leaves unrelated Home, Settings and app keys alone. Physical remote
 compatibility must be checked on the target device; software-injected input does
-not establish that a physical Apps button works. The Library tile and Down
-navigation do not require this service.
+not establish that a physical Apps button works. Selecting the Library tile does
+not require this service.
 
 Removing an app from Home keeps it installed and available in the library.
 Explicit Home removals override theme defaults until re-added. Hiding is stored
