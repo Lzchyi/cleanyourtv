@@ -25,8 +25,17 @@ final class HomeGeometry {
         return dock && appSlots > 0 && appSlots < DOCK_CAPACITY ? DOCK_CAPACITY - appSlots : 0;
     }
     static int shortcutPosition(int appSlots, boolean dock) { return dock && appSlots > 0 ? DOCK_CAPACITY : 0; }
-    static int initialVisibleRows(int configured, boolean shortcut) {
-        return Math.max(shortcut ? 1 : 0, configured);
+    static int initialVisibleRows(int configured) { return Math.max(0, configured); }
+
+    /** Only a small preview of the first ordinary row, never an extra fully visible row. */
+    static int shortcutPeekOffset(int configuredRows, boolean shortcut, int cardTopInset, int previewHeight) {
+        return configuredRows == 0 && shortcut ? cardTopInset + previewHeight : 0;
+    }
+
+    static int dockTopPadding(int viewportHeight, int dockHeight, int regularHeight,
+                              int visibleRows, int minimumTop, int previewOffset) {
+        return Math.max(minimumTop, dockTopPadding(viewportHeight, dockHeight, regularHeight,
+                visibleRows, minimumTop) - Math.max(0, previewOffset));
     }
 
     int spanCount() { return dock ? DOCK_CAPACITY * columns : columns; }
@@ -42,7 +51,7 @@ final class HomeGeometry {
     boolean isFirstRow(int position) { return rowStart(position) == 0; }
     boolean isLastRow(int position, int count) { return count > 0 && rowEnd(position, count) == count - 1; }
 
-    /** Maps cell centres across the dock/grid boundary; -1 denotes the top bar or library. */
+    /** Maps cell centres across the dock/grid boundary; -1 means no row exists in that direction. */
     int vertical(int position, int count, boolean down) {
         if (position < 0 || position >= count) return -1;
         int start = rowStart(position), capacity = rowCapacity(position);
@@ -61,7 +70,7 @@ final class HomeGeometry {
 
     /** A visible shortcut is one Down away from any dock app; ordinary rows keep their usual mapping. */
     int down(int position, int count, int shortcut) {
-        return isDock(position) && shortcut >= DOCK_CAPACITY ? shortcut : vertical(position, count, true);
+        return isDock(position) && shortcut == DOCK_CAPACITY && shortcut < count ? shortcut : vertical(position, count, true);
     }
 
     boolean atHorizontalEdge(int position, int count, boolean rtl, boolean left) {

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Text-free App Library banner; the parent app card supplies its rounded outline. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="180dp" android:height="101dp"
+    android:viewportWidth="180" android:viewportHeight="101">
+    <path android:pathData="M0,0H180V101H0Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:startX="90" android:startY="0"
+                android:endX="90" android:endY="101" android:type="linear">
+                <item android:offset="0" android:color="#FFF9FAFC" />
+                <item android:offset="1" android:color="#FFDADDE5" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#FF555B68"
+        android:pathData="M68,23.5H80Q85,23.5 85,28.5V40.5Q85,45.5 80,45.5H68Q63,45.5 63,40.5V28.5Q63,23.5 68,23.5Z
+                          M100,23.5H112Q117,23.5 117,28.5V40.5Q117,45.5 112,45.5H100Q95,45.5 95,40.5V28.5Q95,23.5 100,23.5Z
+                          M68,55.5H80Q85,55.5 85,60.5V72.5Q85,77.5 80,77.5H68Q63,77.5 63,72.5V60.5Q63,55.5 68,55.5Z" />
+    <path android:fillColor="#FF777E8B"
+        android:pathData="M97,55.5H102Q104,55.5 104,57.5V62.5Q104,64.5 102,64.5H97Q95,64.5 95,62.5V57.5Q95,55.5 97,55.5Z
+                          M110,55.5H115Q117,55.5 117,57.5V62.5Q117,64.5 115,64.5H110Q108,64.5 108,62.5V57.5Q108,55.5 110,55.5Z
+                          M97,68.5H102Q104,68.5 104,70.5V75.5Q104,77.5 102,77.5H97Q95,77.5 95,75.5V70.5Q95,68.5 97,68.5Z
+                          M110,68.5H115Q117,68.5 117,70.5V75.5Q117,77.5 115,77.5H110Q108,77.5 108,75.5V70.5Q108,68.5 110,68.5Z" />
+</vector>

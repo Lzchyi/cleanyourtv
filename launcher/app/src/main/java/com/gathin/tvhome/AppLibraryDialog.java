@@ -403,6 +403,8 @@ final class AppLibraryDialog {
         list.setLayoutManager(new GridLayoutManager(activity, columns));
         list.setItemAnimator(null);
         list.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        // The focused artwork grows into its item's margins; do not clip it to the unscaled row bounds.
+        list.setClipChildren(false);
         list.setClipToPadding(false);
         list.setPadding(dp(4), dp(6), dp(4), dp(8));
         list.setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);

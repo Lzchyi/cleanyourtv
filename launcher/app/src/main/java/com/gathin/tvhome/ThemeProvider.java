@@ -2,9 +2,12 @@ package com.gathin.tvhome;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
+import android.content.ComponentName;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
+import android.os.Bundle;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -20,6 +23,26 @@ import java.io.FileNotFoundException;
  *   content delete --uri content://com.gathin.tvhome.theme/wallpapers      (every image in the collection)
  */
 public class ThemeProvider extends ContentProvider {
+
+    /** Explicit, reversible setup switch; ContentProvider.call must enforce its own permission. */
+    @Override
+    public Bundle call(String method, String arg, Bundle extras) {
+        if (!"library_key_route".equals(method)) return super.call(method, arg, extras);
+        getContext().enforceCallingOrSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS,
+                "Changing the Library key route requires WRITE_SECURE_SETTINGS");
+        if (!"enable".equals(arg) && !"disable".equals(arg))
+            throw new IllegalArgumentException("Expected enable or disable");
+        boolean enabled = "enable".equals(arg);
+        ComponentName alias = new ComponentName(getContext().getPackageName(),
+                MainActivity.class.getPackage().getName() + ".LibraryKeyActivity");
+        getContext().getPackageManager().setComponentEnabledSetting(alias,
+                enabled ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                        : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP);
+        Bundle result = new Bundle();
+        result.putBoolean("enabled", enabled);
+        return result;
+    }
 
     private File file(Uri uri) throws FileNotFoundException {
         String path = ThemeFiles.path(uri.getPathSegments());

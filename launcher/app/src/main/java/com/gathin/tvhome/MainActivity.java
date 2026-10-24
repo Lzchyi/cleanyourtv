@@ -60,6 +60,7 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.animation.AnimationUtils;
+import android.view.animation.DecelerateInterpolator;
 import android.view.animation.LayoutAnimationController;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -75,6 +76,7 @@ import androidx.dynamicanimation.animation.FloatPropertyCompat;
 import androidx.dynamicanimation.animation.SpringAnimation;
 import androidx.dynamicanimation.animation.SpringForce;
 import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.io.File;
@@ -261,7 +263,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private int dockEditSlot = -1;
     private AppLibraryDialog appLibrary;
     private boolean libraryFocusPending;
-    private RecyclerView.OnScrollListener pendingFocusScroll;
+    private Runnable pendingTileFocus;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     /** Refreshes the network pill when the connection changes: at boot Wi-Fi often connects after Home is shown. */
@@ -421,6 +423,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         hiddenApps = new HashSet<>(cfg.hiddenApps);
 
         grid = findViewById(R.id.grid);
+        // The container is never a D-pad stop; only its app cards can own focus.
+        grid.setFocusableInTouchMode(false);
+        grid.setFocusable(false);
         rtlAppGrid = getResources().getBoolean(R.bool.rtl_app_grid);
         // Mirror only the app grid; the header and other locales keep their own layouts.
         grid.setLayoutManager(new GridLayoutManager(this, homeGeometry.spanCount()) {
@@ -455,13 +460,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 else dy = Math.min(top, bottom - limitBottom);
                 if (dy == 0) return false;
                 if (immediate || reducedMotion || !animations) parent.scrollBy(0, dy);
-                else parent.smoothScrollBy(0, dy);
+                else parent.smoothScrollBy(0, dy, new DecelerateInterpolator(), 280);
                 return true;
             }
         });
         ((GridLayoutManager) grid.getLayoutManager()).setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
             @Override public int getSpanSize(int position) {
-                return adapter != null && adapter.isLibraryAt(position) ? homeGeometry.spanSize(DOCK_SIZE) : homeGeometry.spanSize(position);
+                return homeGeometry.spanSize(position);
             }
         });
         grid.setHasFixedSize(true);
@@ -493,7 +498,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         // tvOS layout: push the dock row towards the bottom of the screen, leaving room for
         // rows_below_dock grid rows under it; the rest of the grid stays below until you press Down.
-        int rowsBelowDock = HomeGeometry.initialVisibleRows(cfg.rowsBelowDock, cfg.showLibraryShortcut);
+        int rowsBelowDock = HomeGeometry.initialVisibleRows(cfg.rowsBelowDock);
         grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
             int h = b - t;
             // Item height follows the tile size, which follows the columns and the rows that must fit (AppAdapter.tileWidthPx).
@@ -508,7 +513,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             int headerBottom = homeHeader.getMeasuredHeight() + Math.round(26 * density);
             int shelfClearance = headerBottom + (cfg.dockTitle
                     ? hero.getMeasuredHeight() + Math.round(40 * density) : Math.round(12 * density));
-            int want = HomeGeometry.dockTopPadding(h, dockRow, itemH, rowsBelowDock, shelfClearance);
+            int peek = HomeGeometry.shortcutPeekOffset(rowsBelowDock, cfg.showLibraryShortcut,
+                    Math.round(8 * density), Math.round(28 * density));
+            int want = HomeGeometry.dockTopPadding(h, dockRow, itemH, rowsBelowDock, shelfClearance, peek);
             // Where the rows cannot fit even at the smallest tile (3 rows with the title on), the title keeps its
             // room above the dock and the last rows run off the bottom instead of the title drawing over the clock.
             if (MainActivity.this.dockRow && cfg.dockTitle && rowsBelowDock > 0) want = Math.max(want, (int) (AppAdapter.TITLE_ROOM_DP * density));
@@ -582,8 +589,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                 // Back to the dock tile Up came from, not wherever the focus finder lands.
-                if (adapter.appCount() == 0) onLibraryRequested();
-                else focusTile(Math.min(lastFocused, Math.min(adapter.appCount(), dockRow ? DOCK_SIZE : COLUMNS) - 1));
+                if (adapter.appCount() > 0) focusTile(Math.min(lastFocused, Math.min(adapter.appCount(), dockRow ? DOCK_SIZE : COLUMNS) - 1));
                 return true;
             }
             int firstButton = btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : firstTopButton().getId();
@@ -696,11 +702,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private boolean openLibraryIfAsked(Intent intent) {
-        if (intent == null || !(Intent.ACTION_ALL_APPS.equals(intent.getAction()) || ACTION_APP_LIBRARY.equals(intent.getAction())))
+        boolean directKey = intent != null && intent.getComponent() != null
+                && getPackageName().equals(intent.getComponent().getPackageName())
+                && (MainActivity.class.getPackage().getName() + ".LibraryKeyActivity").equals(intent.getComponent().getClassName());
+        if (intent == null || !(directKey || Intent.ACTION_ALL_APPS.equals(intent.getAction()) || ACTION_APP_LIBRARY.equals(intent.getAction())))
             return false;
-        android.util.Log.i("TvHome.Keys", "Received library action=" + intent.getAction());
+        android.util.Log.i("TvHome.Keys", "Received library action=" + intent.getAction() + " directKey=" + directKey);
         setIntent(new Intent(Intent.ACTION_MAIN));   // recreation must not reopen an already handled request
+        if (directKey && appLibrary != null) return true; // Repeated Apps must not reopen after Back.
         libraryRequestPending = true;
+        if (directKey) {
+            // Hide Home before focus/layout callbacks reveal the catalogue, including a cold start.
+            setLibraryChromeVisible(false);
+            overridePendingTransition(0, 0);
+        }
         root.post(this::showPendingLibrary);
         return true;
     }
@@ -729,6 +744,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (openInputsIfAsked(intent)) return;
         if (openLibraryIfAsked(intent)) return;
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
+        libraryRequestPending = false;
+        if (appLibrary == null && libraryChrome != null) setLibraryChromeVisible(true);
         if (appLibrary != null) appLibrary.close();
         if (openPopup != null) openPopup.dismiss();
         if (stopped) {
@@ -1317,7 +1334,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     // ---- glass highlight -------------------------------------------------------------------------
 
     private String libraryReturnKey;
-    private int libraryReturnSlot, libraryReturnFirst, libraryReturnOffset;
+    private int libraryReturnSlot, libraryReturnOffset;
+    private boolean libraryReturnHasOffset;
     private int libraryReturnTopId = View.NO_ID;
     private boolean libraryReturnShortcut;
 
@@ -1336,9 +1354,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (openPopup != null) openPopup.dismiss();
         cancelPendingFocusScroll();
         GridLayoutManager manager = (GridLayoutManager) grid.getLayoutManager();
-        libraryReturnFirst = manager.findFirstVisibleItemPosition();
-        View first = manager.findViewByPosition(libraryReturnFirst);
-        libraryReturnOffset = first == null ? 0 : manager.getDecoratedTop(first) - grid.getPaddingTop();
+        int returnPosition = adapter.positionOf(libraryReturnKey);
+        View returnView = returnPosition >= 0 ? manager.findViewByPosition(returnPosition) : null;
+        libraryReturnHasOffset = returnView != null;
+        libraryReturnOffset = returnView == null ? 0 : manager.getDecoratedTop(returnView) - grid.getPaddingTop();
         libraryFocusPending = false;
         setLibraryChromeVisible(false);
         wallpaperPlayer.setNavigationDepth(2, animations && !reducedMotion);
@@ -1374,28 +1393,38 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private void restoreLibraryFocus() {
-        if (!libraryFocusPending || appLibrary != null) return;
-        libraryFocusPending = false;
+        if (!libraryFocusPending || appLibrary != null || !hasWindowFocus()) return;
         if (libraryReturnTopId != View.NO_ID) {
+            setHeaderVisible(true);
             View button = findViewById(libraryReturnTopId);
-            if (button != null && button.isShown() && button.isFocusable() && button.requestFocus()) return;
+            if (button != null && button.isShown() && button.isFocusable() && button.requestFocus()) {
+                libraryFocusPending = false;
+                return;
+            }
         }
-        if (libraryReturnShortcut && adapter.libraryPosition() >= 0) { focusLibrary(); return; }
-        if (adapter.appCount() == 0) { firstTopButton().requestFocus(); return; }
+        if (adapter.appCount() == 0) {
+            setHeaderVisible(true);
+            libraryFocusPending = !firstTopButton().requestFocus();
+            return;
+        }
+        int position = libraryReturnShortcut ? adapter.libraryPosition() : adapter.positionOf(libraryReturnKey);
+        int target = adapter.focusablePosition(Math.max(0, Math.min(position >= 0 ? position : libraryReturnSlot,
+                adapter.appCount() - 1)));
+        cancelPendingFocusScroll();
         GridLayoutManager manager = (GridLayoutManager) grid.getLayoutManager();
-        if (libraryReturnFirst >= 0 && libraryReturnFirst < adapter.getItemCount())
-            manager.scrollToPositionWithOffset(libraryReturnFirst, libraryReturnOffset);
-        int position = adapter.positionOf(libraryReturnKey);
-        int target = position >= 0 ? position : libraryReturnSlot;
-        grid.post(() -> focusTile(target));
+        // Restore the selected card itself, rather than a stale first-visible anchor that may be laid out
+        // before/after the popup's window loses focus. Wait for that layout before requesting child focus.
+        if (libraryReturnHasOffset) manager.scrollToPositionWithOffset(target, libraryReturnOffset);
+        else manager.scrollToPosition(target);
+        requestTileFocusAfterLayout(target);
     }
 
     @Override
     public void onTileFocused(int position, View card) {
         lastFocused = position;
         lastFocusedKey = adapter.keyAt(position);
-        setHeaderVisible(homeGeometry.isFirstRow(position) && !adapter.isLibraryAt(position));
-        wallpaperPlayer.setNavigationDepth(homeGeometry.isDock(position) && !adapter.isLibraryAt(position) ? 1 : 2,
+        setHeaderVisible(homeGeometry.isFirstRow(position));
+        wallpaperPlayer.setNavigationDepth(homeGeometry.isDock(position) ? 1 : 2,
                 animations && !reducedMotion);
         // Focus restored before the first layout (cold start): the tile has no size yet, and the glass
         // would be sized to 2*pad. Run again once the tile is laid out.
@@ -1452,7 +1481,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             springY.animateToFinalPosition(y - glassScrollShift);
         }
         View item = (View) card.getParent();
-        if (homeGeometry.isDock(position) && !adapter.isLibraryAt(position)) {
+        if (homeGeometry.isDock(position)) {
             // Dock: park it at the bottom of the screen and show the top shelf for this app.
             int decoratedTop = item.getTop() - (int) (6 * density);
             int dy = decoratedTop - grid.getPaddingTop();
@@ -1461,7 +1490,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             boolean scroll = Math.abs(dy) > (int) (8 * density);
             if (scroll) {
                 if (!animations || reducedMotion) grid.scrollBy(0, dy);
-                else grid.smoothScrollBy(0, dy);
+                else grid.smoothScrollBy(0, dy, new DecelerateInterpolator(), 280);
             }
             showHero(position, scroll ? r.top - dy : r.top);
         } else {
@@ -1473,7 +1502,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 int dy = item.getTop() - grid.getPaddingTop();
                 if (Math.abs(dy) > 8 * density) {
                     if (!animations || reducedMotion) grid.scrollBy(0, dy);
-                    else grid.smoothScrollBy(0, dy);
+                    else grid.smoothScrollBy(0, dy, new DecelerateInterpolator(), 280);
                 }
             } else {
                 // Scroll just enough so the whole glass (not only the tile) is visible.
@@ -1784,9 +1813,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         stopAmbientAnimation();
         hero.animate().cancel();
         ambient.animate().cancel();
-        hero.setAlpha(0f);
         heroArt.animate().cancel();
-        heroArt.setAlpha(0f);
+        if (animations && !reducedMotion) {
+            hero.animate().alpha(0f).setDuration(180).start();
+            heroArt.animate().alpha(0f).setDuration(180).start();
+        } else {
+            hero.setAlpha(0f);
+            heroArt.setAlpha(0f);
+        }
         heroShown = false;
         if (!ambientGlow) return;
         if (!animations || reducedMotion) {
@@ -1798,11 +1832,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             ambient.animate().alpha(1f).setDuration(300).start();
             return;
         }
-        // The same dip-and-swap as the dock's top shelf.
-        ambient.animate().alpha(0.35f).setDuration(ambient.getAlpha() > 0.35f ? 200 : 0).withEndAction(() -> {
-            setAmbient(color);
-            ambient.animate().alpha(1f).setDuration(500).start();
-        }).start();
+        // Keep one continuous backdrop while the same Home page scrolls between rows.
+        transitionAmbient(color);
     }
 
     private void hideHero() {
@@ -2033,8 +2064,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         int shortcut = adapter.libraryPosition();
         int target = down ? homeGeometry.down(position, count, shortcut) : homeGeometry.vertical(position, count, false);
         if (target < 0) {
-            if (down) onLibraryRequested();
-            else return false;   // The first actual row goes to the top controls.
+            // Down at the final row stops, including repeat events from a held key.
+            // Library opens only through its tile or the dedicated remote action.
+            return down;   // Up from the first actual row can reach the top controls.
         } else {
             focusTile(target);
         }
@@ -2056,53 +2088,115 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private void cancelPendingFocusScroll() {
-        if (pendingFocusScroll != null) {
-            grid.removeOnScrollListener(pendingFocusScroll);
-            pendingFocusScroll = null;
-            grid.stopScroll();
+        if (pendingTileFocus != null) {
+            grid.removeCallbacks(pendingTileFocus);
+            pendingTileFocus = null;
         }
+        grid.stopScroll();
     }
 
     private void focusTile(int position) {
-        libraryFocusPending = false;
-        cancelPendingFocusScroll();
+        // A new key can retarget an in-flight reveal without braking the entire page first.
+        if (pendingTileFocus != null) {
+            grid.removeCallbacks(pendingTileFocus);
+            pendingTileFocus = null;
+        }
         if (adapter.appCount() == 0) {
-            if (adapter.libraryPosition() >= 0) focusLibrary();
-            else firstTopButton().requestFocus();
+            setHeaderVisible(true);
+            libraryFocusPending = !firstTopButton().requestFocus();
             return;
         }
         final int pos = adapter.focusablePosition(Math.max(0, Math.min(position, adapter.appCount() - 1)));
-        RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(pos);
-        if (vh != null) {
-            View card = vh.itemView.findViewById(R.id.card);
-            // Already focused (e.g. back from an app): no focus change fires, so restore the glass by hand.
-            if (card.isFocused()) onTileFocused(pos, card);
-            else card.requestFocus();
+        RecyclerView.ViewHolder holder = grid.findViewHolderForAdapterPosition(pos);
+        View card = holder == null ? null : holder.itemView.findViewById(R.id.card);
+        if (!grid.isLayoutRequested() && !grid.hasPendingAdapterUpdates() && card != null && card.isShown()) {
+            if (card.isFocused()) {
+                libraryFocusPending = false;
+                onTileFocused(pos, card);
+                return;
+            }
+            if (card.requestFocus()) {
+                libraryFocusPending = false;
+                return;
+            }
+        }
+        if (animations && !reducedMotion && !libraryFocusPending && !grid.isLayoutRequested()
+                && !grid.hasPendingAdapterUpdates()) {
+            // Offscreen rows must travel through the same viewport, rather than be laid out in one jump.
+            LinearSmoothScroller scroller = new LinearSmoothScroller(this) {
+                @Override public int calculateDyToMakeVisible(View view, int snapPreference) {
+                    RecyclerView.LayoutManager manager = getLayoutManager();
+                    if (manager == null) return 0;
+                    int top = manager.getDecoratedTop(view) - Math.round(12 * density);
+                    int bottom = manager.getDecoratedBottom(view) + Math.round(6 * density);
+                    if (homeGeometry.isDock(pos)) {
+                        return grid.getPaddingTop() - manager.getDecoratedTop(view);
+                    }
+                    if (top < 0) return -top;
+                    if (bottom > grid.getHeight()) {
+                        return -Math.min(top, bottom - (grid.getHeight() - grid.getPaddingBottom()));
+                    }
+                    return 0;
+                }
+
+                @Override protected int calculateTimeForDeceleration(int distance) {
+                    return Math.max(220, Math.min(320, super.calculateTimeForDeceleration(distance)));
+                }
+            };
+            scroller.setTargetPosition(pos);
+            grid.getLayoutManager().startSmoothScroll(scroller);
+            requestTileFocusAfterLayout(pos, true);
             return;
         }
-        // Not laid out yet: scroll there, then focus once the scroll settles.
-        if (!animations) {
-            grid.scrollToPosition(pos);
-            grid.post(() -> {
-                RecyclerView.ViewHolder h = grid.findViewHolderForAdapterPosition(pos);
-                if (h != null) h.itemView.findViewById(R.id.card).requestFocus();
-            });
-            return;
-        }
-        pendingFocusScroll = new RecyclerView.OnScrollListener() {
-            @Override
-            public void onScrollStateChanged(@NonNull RecyclerView rv, int newState) {
-                if (newState != RecyclerView.SCROLL_STATE_IDLE) return;
-                rv.removeOnScrollListener(this);
-                if (pendingFocusScroll != this) return;
-                pendingFocusScroll = null;
-                RecyclerView.ViewHolder h = rv.findViewHolderForAdapterPosition(pos);
-                View target = h != null ? h.itemView.findViewById(R.id.card) : rv.getChildAt(0);
-                if (target != null) target.requestFocus();
+        // Cold starts and Library restoration still use a bounded layout wait, even without a scroll event.
+        ((GridLayoutManager) grid.getLayoutManager()).scrollToPosition(pos);
+        requestTileFocusAfterLayout(pos);
+    }
+
+    private void requestTileFocusAfterLayout(int position) {
+        requestTileFocusAfterLayout(position, false);
+    }
+
+    private void requestTileFocusAfterLayout(int position, boolean waitForScroll) {
+        if (pendingTileFocus != null) grid.removeCallbacks(pendingTileFocus);
+        pendingTileFocus = new Runnable() {
+            int frames;
+
+            @Override public void run() {
+                if (pendingTileFocus != this) return;
+                if (isFinishing() || isDestroyed() || appLibrary != null) {
+                    pendingTileFocus = null;
+                    return;
+                }
+                if ((!waitForScroll || grid.getScrollState() == RecyclerView.SCROLL_STATE_IDLE)
+                        && hasWindowFocus() && !grid.isComputingLayout() && !grid.isLayoutRequested()
+                        && !grid.hasPendingAdapterUpdates()) {
+                    RecyclerView.ViewHolder holder = grid.findViewHolderForAdapterPosition(position);
+                    View card = holder == null ? null : holder.itemView.findViewById(R.id.card);
+                    if (card != null && card.isAttachedToWindow() && card.isShown()) {
+                        boolean focused = card.isFocused();
+                        if (focused || card.requestFocus()) {
+                            pendingTileFocus = null;
+                            if (libraryFocusPending) android.util.Log.i("TvHome.Focus", "Library return focused tile=" + position);
+                            libraryFocusPending = false;
+                            if (focused) onTileFocused(position, card);
+                            return;
+                        }
+                    }
+                }
+                if (++frames < (waitForScroll ? 90 : 16)) {
+                    grid.postOnAnimation(this);
+                } else {
+                    // A changed catalog/window must leave usable controls, never a focusable empty grid root.
+                    pendingTileFocus = null;
+                    if (libraryFocusPending) android.util.Log.w("TvHome.Focus", "Library return used top-control fallback");
+                    libraryFocusPending = false;
+                    setHeaderVisible(true);
+                    if (hasWindowFocus()) firstTopButton().requestFocus();
+                }
             }
         };
-        grid.addOnScrollListener(pendingFocusScroll);
-        grid.smoothScrollToPosition(pos);
+        grid.postOnAnimation(pendingTileFocus);
     }
 
     // ---- top bar ---------------------------------------------------------------------------------

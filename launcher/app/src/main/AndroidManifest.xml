@@ -97,6 +97,20 @@
             </intent-filter>
         </activity>
 
+        <!-- Optional hardware-layout route. Enable explicitly after validating the remote's saved
+             layout. Target Home directly, so a forwarding activity never pauses it first. -->
+        <activity-alias
+            android:name=".LibraryKeyActivity"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.APP_CALCULATOR" />
+            </intent-filter>
+        </activity-alias>
+
         <activity
             android:name=".LauncherSettingsActivity"
             android:exported="false"

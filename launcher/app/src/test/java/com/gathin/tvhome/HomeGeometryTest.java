@@ -16,7 +16,7 @@ public class HomeGeometryTest {
         }
     }
 
-    @Test public void downFromEveryTileOfFinalActualRowEntersLibrary() {
+    @Test public void downFromEveryTileOfFinalActualRowStopsAtTheBoundary() {
         for (int columns = 4; columns <= 7; columns++) {
             HomeGeometry home = new HomeGeometry(columns, true);
             for (int count = 1; count <= 35; count++) {
@@ -140,10 +140,10 @@ public class HomeGeometryTest {
         assertEquals(0, HomeGeometry.shortcutPosition(2, false));
     }
 
-    @Test public void enabledShortcutIsInitiallyVisibleWithZeroConfiguredRows() {
-        assertEquals(1, HomeGeometry.initialVisibleRows(0, true));
-        assertEquals(0, HomeGeometry.initialVisibleRows(0, false));
-        assertEquals(2, HomeGeometry.initialVisibleRows(2, true));
+    @Test public void shortcutNeverChangesTheConfiguredFullRowCount() {
+        assertEquals(0, HomeGeometry.initialVisibleRows(0));
+        assertEquals(2, HomeGeometry.initialVisibleRows(2));
+        assertEquals(0, HomeGeometry.initialVisibleRows(-1));
     }
 
     @Test public void oneDownFromEveryDockAppReachesTheShortcutAcrossGridWidths() {
@@ -156,10 +156,41 @@ public class HomeGeometryTest {
         }
     }
 
+    @Test public void relocatedShortcutDoesNotPullDownPastAdjacentPinnedRows() {
+        HomeGeometry home = new HomeGeometry(4, true);
+        assertEquals(6, home.down(2, 20, 12));
+        assertEquals(8, home.down(4, 20, 12));
+        assertEquals(4, home.down(0, 20, 2));
+    }
+
     @Test public void floatingHeaderPreservesInitialDockPositionWithoutAReservedViewportStrip() {
         int originalGridOrigin = 180;
         int originalPadding = HomeGeometry.dockTopPadding(900, 328, 292, 0, 120);
         int fullViewportPadding = HomeGeometry.dockTopPadding(1080, 328, 292, 0, 300);
         assertEquals(originalGridOrigin + originalPadding, fullViewportPadding);
+    }
+
+    @Test public void zeroRowsWithShortcutShowsOnlyTheRequestedPartialPeek() {
+        int peek = HomeGeometry.shortcutPeekOffset(0, true, 16, 56);  // 28dp peek at Sony density2
+        int padding = HomeGeometry.dockTopPadding(1080, 328, 292, 0, 300, peek);
+        int nextCardTop = padding + 328 + 16;
+        assertEquals(56, 1080 - nextCardTop);
+        assertTrue("a full regular row was exposed", 1080 - nextCardTop < 202);
+        assertEquals(0, HomeGeometry.shortcutPeekOffset(0, false, 16, 56));
+        assertEquals(0, HomeGeometry.shortcutPeekOffset(1, true, 16, 56));
+    }
+
+    @Test public void heldDownAtTheLastRowCannotProduceAnotherNavigationTarget() {
+        for (int columns = 4; columns <= 7; columns++) {
+            HomeGeometry home = new HomeGeometry(columns, true);
+            for (int count = 1; count <= 24; count++) {
+                int lastRow = home.rowStart(count - 1);
+                for (int position = lastRow; position < count; position++) {
+                    for (int repeat = 0; repeat < 10; repeat++)
+                        assertEquals(-1, home.down(position, count, count > 4 ? 4 : -1));
+                }
+            }
+            assertEquals(-1, home.down(0, 0, -1));
+        }
     }
 }

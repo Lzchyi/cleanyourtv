@@ -213,7 +213,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         this.showHomeSettings = cfg.showHomeSettingsShortcut;
         this.showLibrary = cfg.showLibraryShortcut;
         this.reducedMotion = cfg.reducedMotion;
-        this.rowsBelowDock = HomeGeometry.initialVisibleRows(cfg.rowsBelowDock, cfg.showLibraryShortcut);
+        this.rowsBelowDock = HomeGeometry.initialVisibleRows(cfg.rowsBelowDock);
         this.dockTitle = cfg.dockTitle;
         this.dockRow = cfg.dockRow;
         this.restNameAlpha = cfg.alwaysShowNames ? 0.75f : 0f;
@@ -303,22 +303,30 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         }
         docked = 0;
         while (docked < Math.min(dockSize, fresh.size()) && isDocked(fresh.get(docked))) docked++;
+        if (showLibrary) {
+            Entry library = new Entry(Entry.LIBRARY, ctx.getString(R.string.app_library),
+                    new ComponentName(ctx, "app-library"), ctx.getDrawable(R.drawable.ic_library_tile), null, null, 0);
+            Integer rank = savedRanks.get(library.component.flattenToShortString());
+            // Older orders have no Library key: place it first after the dock, preserving all app ranks.
+            int position = dockRow ? Math.min(fillDock || docked == 0 ? dockSize : docked, fresh.size()) : 0;
+            if (!fresh.isEmpty() && fresh.get(fresh.size() - 1).kind == Entry.HOME_SETTINGS)
+                position = Math.min(position, fresh.size() - 1);
+            if (rank != null) {
+                position = 0;
+                for (Entry entry : fresh) {
+                    Integer before = savedRanks.get(entry.component.flattenToShortString());
+                    if (entry.kind == Entry.HOME_SETTINGS || before == null || before >= rank) break;
+                    position++;
+                }
+            }
+            fresh.add(position, library);
+            docked = 0;
+            while (docked < Math.min(dockSize, fresh.size()) && isDocked(fresh.get(docked))) docked++;
+        }
         emptySlots = dockRow && !reordering ? DockSlots.empty(docked, dockSize, fresh.size(), fillDock) : 0;
         for (int i = 0; i < emptySlots; i++) {
             fresh.add(docked + i, new Entry(Entry.EMPTY, "", new ComponentName(ctx, "empty-dock-slot-" + i),
                     null, null, null, 0));
-        }
-        if (showLibrary && !reordering) {
-            int padding = HomeGeometry.shortcutPadding(fresh.size(), dockRow);
-            if (padding > 0) {
-                docked = fresh.size();
-                emptySlots = padding;
-                for (int i = 0; i < padding; i++) fresh.add(new Entry(Entry.EMPTY, "",
-                        new ComponentName(ctx, "empty-shortcut-dock-slot-" + i), null, null, null, 0));
-            }
-            int position = HomeGeometry.shortcutPosition(fresh.size(), dockRow);
-            fresh.add(position, new Entry(Entry.LIBRARY, ctx.getString(R.string.app_library),
-                    new ComponentName(ctx, "app-library"), null, ctx.getDrawable(R.drawable.ic_apps), null, 0));
         }
         items.clear();
         items.addAll(fresh);
@@ -500,7 +508,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     boolean libraryShortcutEnabled() { return showLibrary; }
 
     @Override public int getItemViewType(int position) {
-        return isLibraryAt(position) ? 1 : dockRow && position < dockSize ? 2 : 0;
+        return dockRow && position < dockSize ? 2 : 0;
     }
 
     boolean containsPackage(String pkg) {
@@ -541,7 +549,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     /** Tiles that can be moved: everything but the "Default home" tile, which always stays last. */
     int movableCount() {
         int count = 0;
-        for (Entry entry : items) if (entry.kind == Entry.APP || entry.kind == Entry.CARD) count++;
+        for (Entry entry : items) if (entry.kind == Entry.APP || entry.kind == Entry.CARD || entry.kind == Entry.LIBRARY) count++;
         return count;
     }
 
@@ -549,7 +557,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     List<String> movableKeys() {
         List<String> keys = new ArrayList<>();
         for (Entry e : items) {
-            if (e.kind != Entry.EMPTY && e.kind != Entry.LIBRARY && e.kind != Entry.HOME_SETTINGS)
+            if (e.kind != Entry.EMPTY && e.kind != Entry.HOME_SETTINGS)
                 keys.add(e.component.flattenToShortString());
         }
         return keys;
