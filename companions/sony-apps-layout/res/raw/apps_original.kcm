@@ -1,0 +1,6 @@
+# Research sketch only. Not a verified rollback procedure.
+# Restores the Apps keycode observed in the saved Sony callback trace.
+# Restore the previous system layout selection/list separately.
+type OVERLAY
+map key 580 ALL_APPS
+map key usage 0x000c0544 ALL_APPS

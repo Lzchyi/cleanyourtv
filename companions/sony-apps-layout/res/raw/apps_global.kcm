@@ -1,0 +1,5 @@
+# Research sketch only. Requires a separate category-route activity.
+# May also redirect a real keyboard's Calculator key; review that tradeoff.
+type OVERLAY
+map key 580 CALCULATOR
+map key usage 0x000c0544 CALCULATOR

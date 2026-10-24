@@ -1,0 +1,4 @@
+<keyboard-layouts xmlns:android="http://schemas.android.com/apk/res/android">
+    <keyboard-layout android:name="apps_global" android:label="Sony Apps to Library (trial)" android:keyboardLayout="@raw/apps_global" />
+    <keyboard-layout android:name="apps_original" android:label="Sony original Apps (rollback)" android:keyboardLayout="@raw/apps_original" />
+</keyboard-layouts>

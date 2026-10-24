@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.lzchyi.tvkeys" android:versionCode="4" android:versionName="0.4-switchable">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <application android:label="Sony Apps layout trial" android:allowBackup="false" android:theme="@android:style/Theme.Material.NoActionBar">
+        <receiver android:name=".Layouts" android:exported="true" android:permission="android.permission.WRITE_SECURE_SETTINGS" android:label="Sony Apps layout trial">
+            <intent-filter><action android:name="android.hardware.input.action.QUERY_KEYBOARD_LAYOUTS" /></intent-filter>
+            <meta-data android:name="android.hardware.input.metadata.KEYBOARD_LAYOUTS" android:resource="@xml/layouts" />
+        </receiver>
+        <activity android:name=".LibraryRoute" android:enabled="true" android:exported="true" android:noHistory="true" android:excludeFromRecents="true" android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.APP_CALCULATOR" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
